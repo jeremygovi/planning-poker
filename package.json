@@ -1,0 +1,61 @@
+{
+  "name": "poker-express",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Planning poker temps réel, ferroviaire et auto-hébergé",
+  "type": "module",
+  "scripts": {
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "dev": "concurrently -k -n server,client -c cyan,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:client": "vite",
+    "dev:server": "tsx watch src/server/server.ts",
+    "start": "node dist/backend/server/server.js",
+    "backup": "node dist/backend/server/backup.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.client.json && tsc -p tsconfig.server.json --noEmit"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@fastify/static": "^10.1.3",
+    "@fastify/websocket": "^11.3.0",
+    "@sinclair/typebox": "^0.34.52",
+    "better-sqlite3": "^13.0.3",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.12.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.62.1",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.6",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.4.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@vitest/coverage-v8": "^4.1.11",
+    "concurrently": "^10.0.5",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.5",
+    "globals": "^17.12.0",
+    "jsdom": "^27.0.1",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.69.0",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
+  }
+}
