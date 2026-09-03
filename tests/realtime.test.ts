@@ -78,7 +78,7 @@ describe('realtime', () => {
     const room = (await app.inject({
       method: 'POST',
       url: '/api/rooms',
-      headers: { cookie: aliceCookie },
+      headers: { cookie: bobCookie },
       payload: { name: 'Train synchronisé' }
     })).json() as RoomSummary;
     await app.inject({ method: 'POST', url: `/api/rooms/${room.slug}/join`, headers: { cookie: aliceCookie }, payload: { displayName: 'Alice', role: 'voter', avatar: 'fox' } });
@@ -101,7 +101,7 @@ describe('realtime', () => {
     expect((await app.inject({
       method: 'PATCH',
       url: `/api/rooms/${room.slug}`,
-      headers: { cookie: aliceCookie },
+      headers: { cookie: bobCookie },
       payload: { theme: 'station', soundEnabled: false, defaultDeckKey: 'tshirt' }
     })).statusCode).toBe(204);
     expect((await aliceSettings).payload.room).toMatchObject({ theme: 'station', soundEnabled: false, defaultDeckKey: 'tshirt' });

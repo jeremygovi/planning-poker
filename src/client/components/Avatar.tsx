@@ -17,7 +17,10 @@ const palettes: Record<AvatarKey, { shell: string; face: string; accent: string 
   pirate: { shell: '#31466c', face: '#ffe1bd', accent: '#ef476f' }
 };
 
-export function Avatar({ avatar, size = 'medium' }: { avatar: AvatarKey; size?: AvatarSize }) {
+export function Avatar({ avatar, avatarImage, size = 'medium' }: { avatar: AvatarKey; avatarImage?: string | null; size?: AvatarSize }) {
+  if (avatarImage) {
+    return <span className={`avatar-art avatar-${size} avatar-custom`} aria-hidden="true"><img src={avatarImage} alt="" /></span>;
+  }
   const palette = palettes[avatar];
   return (
     <span className={`avatar-art avatar-${size} avatar-${avatar}`} aria-hidden="true">

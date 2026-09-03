@@ -1,5 +1,16 @@
 import { Type } from '@sinclair/typebox';
 
+const AvatarKeySchema = Type.Union([
+  Type.Literal('train'), Type.Literal('rocket'), Type.Literal('robot'), Type.Literal('fox'),
+  Type.Literal('owl'), Type.Literal('cat'), Type.Literal('cactus'), Type.Literal('comet'),
+  Type.Literal('frog'), Type.Literal('panda'), Type.Literal('alien'), Type.Literal('pirate')
+]);
+
+const AvatarImageSchema = Type.Union([
+  Type.String({ minLength: 1, maxLength: 48_000, pattern: '^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$' }),
+  Type.Null()
+]);
+
 export const LoginBodySchema = Type.Object({ token: Type.String({ minLength: 16, maxLength: 128 }) }, { additionalProperties: false });
 
 export const CreateRoomBodySchema = Type.Object({
@@ -22,11 +33,14 @@ export const UpdateRoomBodySchema = Type.Partial(Type.Object({
 export const JoinRoomBodySchema = Type.Object({
   displayName: Type.String({ minLength: 1, maxLength: 40 }),
   role: Type.Union([Type.Literal('voter'), Type.Literal('observer')]),
-  avatar: Type.Union([
-    Type.Literal('train'), Type.Literal('rocket'), Type.Literal('robot'), Type.Literal('fox'),
-    Type.Literal('owl'), Type.Literal('cat'), Type.Literal('cactus'), Type.Literal('comet'),
-    Type.Literal('frog'), Type.Literal('panda'), Type.Literal('alien'), Type.Literal('pirate')
-  ])
+  avatar: AvatarKeySchema,
+  avatarImage: Type.Optional(AvatarImageSchema)
+}, { additionalProperties: false });
+
+export const ProfileBodySchema = Type.Object({
+  displayName: Type.String({ minLength: 1, maxLength: 40 }),
+  avatar: AvatarKeySchema,
+  avatarImage: AvatarImageSchema
 }, { additionalProperties: false });
 
 export const RejoinRoomBodySchema = Type.Object({ token: Type.String({ minLength: 32, maxLength: 128 }) }, { additionalProperties: false });

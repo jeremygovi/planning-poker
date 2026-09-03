@@ -35,7 +35,7 @@ interface ParticipantRow {
   display_name: string;
   role: ParticipationRole;
   avatar: AvatarKey;
-  is_admin: number;
+  avatar_image: string | null;
   rejoin_token_hash: string | null;
   created_at: string;
   last_seen_at: string;
@@ -81,6 +81,23 @@ function cleanText(value: unknown, maxLength: number, code: string): string {
 
 function tokenHash(value: string): string {
   return createHash('sha256').update(value).digest('hex');
+}
+
+function cleanAvatarImage(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'string' || value.length > 48_000) throw new AppError('INVALID_AVATAR_IMAGE', 400);
+  const match = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value);
+  if (!match) throw new AppError('INVALID_AVATAR_IMAGE', 400);
+  const bytes = Buffer.from(match[2], 'base64');
+  if (bytes.length === 0 || bytes.length > 32 * 1024) throw new AppError('INVALID_AVATAR_IMAGE', 400);
+  const mime = match[1];
+  const validSignature = mime === 'png'
+    ? bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    : mime === 'jpeg'
+      ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+      : bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+  if (!validSignature) throw new AppError('INVALID_AVATAR_IMAGE', 400);
+  return value;
 }
 
 function nowIso(): string {
@@ -143,7 +160,7 @@ export class RoomService {
     `).all(storyId) as VoteRow[];
   }
 
-  private roomSummary(room: RoomRow, participantCount: number, canAdminister: boolean): RoomSummary {
+  private roomSummary(room: RoomRow, participantCount: number, isMember: boolean): RoomSummary {
     const active = this.activeStory(room.id);
     return {
       id: room.id,
@@ -155,7 +172,7 @@ export class RoomService {
       status: room.status,
       participantCount,
       activeStoryTitle: active?.title ?? null,
-      canAdminister,
+      isMember,
       createdAt: room.created_at
     };
   }
@@ -165,20 +182,20 @@ export class RoomService {
     return rooms.map((room) => this.roomSummary(
       room,
       presenceCount(room.slug),
-      this.isRoomAdmin(room.id, participantId(room.id))
+      this.isRoomParticipant(room.id, participantId(room.id))
     ));
   }
 
-  isRoomAdmin(roomId: string, participantId: string | null): boolean {
+  isRoomParticipant(roomId: string, participantId: string | null): boolean {
     if (!participantId) return false;
     return Boolean(this.db.prepare(
-      'SELECT 1 FROM participants WHERE id = ? AND room_id = ? AND is_admin = 1'
+      'SELECT 1 FROM participants WHERE id = ? AND room_id = ?'
     ).get(participantId, roomId));
   }
 
-  assertRoomAdmin(slug: string, participantId: string | null): void {
+  assertRoomParticipant(slug: string, participantId: string | null): void {
     const room = this.roomBySlug(slug);
-    if (!this.isRoomAdmin(room.id, participantId)) throw new AppError('FORBIDDEN', 403);
+    if (!this.isRoomParticipant(room.id, participantId)) throw new AppError('JOIN_REQUIRED', 403);
   }
 
   createRoom(input: { name: unknown; theme?: unknown; defaultDeckKey?: unknown }): RoomSummary {
@@ -224,7 +241,7 @@ export class RoomService {
 
   joinRoom(
     slug: string,
-    input: { displayName: unknown; role: unknown; avatar: unknown },
+    input: { displayName: unknown; role: unknown; avatar: unknown; avatarImage?: unknown },
     existingParticipantId: string | null
   ): { participant: ParticipantRow; rejoinToken: string } {
     const displayName = cleanText(input.displayName, 40, 'INVALID_DISPLAY_NAME');
@@ -236,34 +253,29 @@ export class RoomService {
     }
     const role = input.role as ParticipationRole;
     const avatar = input.avatar as AvatarKey;
+    const avatarImage = cleanAvatarImage(input.avatarImage);
     const rejoinToken = randomBytes(32).toString('base64url');
     return this.db.transaction(() => {
       const room = this.roomBySlug(slug);
       if (room.status !== 'active') throw new AppError('ROOM_ARCHIVED', 409);
-      const hasAdmin = Boolean(this.db.prepare(
-        'SELECT 1 FROM participants WHERE room_id = ? AND is_admin = 1'
-      ).get(room.id));
       const existing = this.participant(existingParticipantId, room.id);
       if (existing) {
-        if (this.activeStory(room.id) && (
-          existing.role !== role || existing.display_name !== displayName || existing.avatar !== avatar
-        )) {
+        if (this.activeStory(room.id) && existing.role !== role) {
           throw new AppError('MEMBERSHIP_LOCKED', 409);
         }
-        const isAdmin = Boolean(existing.is_admin) || !hasAdmin;
         const timestamp = nowIso();
         this.db.prepare(`
           UPDATE participants
-          SET display_name = ?, role = ?, avatar = ?, is_admin = ?, rejoin_token_hash = ?, last_seen_at = ?
+          SET display_name = ?, role = ?, avatar = ?, avatar_image = ?, is_admin = 0, rejoin_token_hash = ?, last_seen_at = ?
           WHERE id = ?
-        `).run(displayName, role, avatar, isAdmin ? 1 : 0, tokenHash(rejoinToken), timestamp, existing.id);
+        `).run(displayName, role, avatar, avatarImage, tokenHash(rejoinToken), timestamp, existing.id);
         return {
           participant: {
             ...existing,
             display_name: displayName,
             role,
             avatar,
-            is_admin: isAdmin ? 1 : 0,
+            avatar_image: avatarImage,
             rejoin_token_hash: tokenHash(rejoinToken),
             last_seen_at: timestamp
           },
@@ -277,14 +289,14 @@ export class RoomService {
         display_name: displayName,
         role,
         avatar,
-        is_admin: hasAdmin ? 0 : 1,
+        avatar_image: avatarImage,
         rejoin_token_hash: tokenHash(rejoinToken),
         created_at: timestamp,
         last_seen_at: timestamp
       };
       this.db.prepare(`
         INSERT INTO participants (
-          id, room_id, display_name, role, avatar, is_admin, rejoin_token_hash, created_at, last_seen_at
+          id, room_id, display_name, role, avatar, avatar_image, rejoin_token_hash, created_at, last_seen_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         participant.id,
@@ -292,7 +304,7 @@ export class RoomService {
         participant.display_name,
         participant.role,
         participant.avatar,
-        participant.is_admin,
+        participant.avatar_image,
         participant.rejoin_token_hash,
         participant.created_at,
         participant.last_seen_at
@@ -309,6 +321,45 @@ export class RoomService {
     if (!participant) throw new AppError('REJOIN_DENIED', 403);
     this.db.prepare('UPDATE participants SET last_seen_at = ? WHERE id = ?').run(nowIso(), participant.id);
     return participant;
+  }
+
+  updateProfiles(
+    participantIds: Iterable<string>,
+    input: { displayName: unknown; avatar: unknown; avatarImage: unknown }
+  ): string[] {
+    const displayName = cleanText(input.displayName, 40, 'INVALID_DISPLAY_NAME');
+    if (typeof input.avatar !== 'string' || !AVATARS.has(input.avatar as AvatarKey)) {
+      throw new AppError('INVALID_AVATAR', 400);
+    }
+    const avatar = input.avatar as AvatarKey;
+    const avatarImage = cleanAvatarImage(input.avatarImage);
+    const findParticipant = this.db.prepare(`
+      SELECT p.display_name, p.avatar, p.avatar_image, r.slug
+      FROM participants p
+      JOIN rooms r ON r.id = p.room_id
+      WHERE p.id = ?
+    `);
+    const updateParticipant = this.db.prepare(`
+      UPDATE participants
+      SET display_name = ?, avatar = ?, avatar_image = ?, is_admin = 0, last_seen_at = ?
+      WHERE id = ?
+    `);
+    return this.db.transaction(() => {
+      const changedRooms = new Set<string>();
+      for (const participantId of new Set(participantIds)) {
+        const current = findParticipant.get(participantId) as {
+          display_name: string;
+          avatar: AvatarKey;
+          avatar_image: string | null;
+          slug: string;
+        } | undefined;
+        if (!current) continue;
+        if (current.display_name === displayName && current.avatar === avatar && current.avatar_image === avatarImage) continue;
+        updateParticipant.run(displayName, avatar, avatarImage, nowIso(), participantId);
+        changedRooms.add(current.slug);
+      }
+      return [...changedRooms];
+    })();
   }
 
   startStory(slug: string, input: { title: unknown; timerDurationSeconds?: unknown }): void {
@@ -455,7 +506,7 @@ export class RoomService {
       displayName: participant.display_name,
       role: participant.role,
       avatar: participant.avatar,
-      isAdmin: Boolean(participant.is_admin),
+      avatarImage: participant.avatar_image,
       online: presentIds.has(participant.id),
       hasVoted: voteByParticipant.has(participant.id)
     }));
@@ -465,7 +516,7 @@ export class RoomService {
       displayName: current.display_name,
       role: current.role,
       avatar: current.avatar,
-      isAdmin: Boolean(current.is_admin),
+      avatarImage: current.avatar_image,
       online: presentIds.has(current.id),
       hasVoted: voteByParticipant.has(current.id)
     } : null;
@@ -522,7 +573,7 @@ export class RoomService {
     }));
 
     return {
-      room: this.roomSummary(room, presentIds.size, Boolean(current?.is_admin)),
+      room: this.roomSummary(room, presentIds.size, Boolean(current)),
       me,
       participants,
       story: storyView,

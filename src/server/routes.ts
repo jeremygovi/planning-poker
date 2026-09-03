@@ -3,13 +3,14 @@ import {
   CreateRoomBodySchema,
   FinalizeBodySchema,
   JoinRoomBodySchema,
+  ProfileBodySchema,
   RejoinRoomBodySchema,
   StartStoryBodySchema,
   TimerBodySchema,
   UpdateRoomBodySchema,
   VoteBodySchema
 } from '../shared/schemas.js';
-import type { AvatarKey, DeckKey, ParticipationRole, RoomTheme } from '../shared/types.js';
+import type { AvatarKey, DeckKey, ParticipationRole, RoomTheme, UserProfile } from '../shared/types.js';
 import type { AuthManager } from './auth.js';
 import type { Config } from './config.js';
 import { AppError } from './errors.js';
@@ -51,15 +52,21 @@ export function registerRoomRoutes(
       hub.presentIds(slug)
     );
   };
-  const requireRoomAdmin = (request: FastifyRequest, slug: string) => {
+  const requireRoomParticipant = (request: FastifyRequest, slug: string) => {
     const roomId = service.roomId(slug);
-    service.assertRoomAdmin(slug, auth.getParticipantId(request, roomId));
+    service.assertRoomParticipant(slug, auth.getParticipantId(request, roomId));
   };
 
   app.get('/api/rooms', async (request) => service.listRooms(
     (slug) => hub.presenceCount(slug),
     (roomId) => auth.getParticipantId(request, roomId)
   ));
+
+  app.patch<{ Body: UserProfile }>('/api/profile', { schema: { body: ProfileBodySchema } }, async (request, reply) => {
+    const changedRooms = service.updateProfiles(request.authSession?.memberships.values() ?? [], request.body);
+    for (const slug of changedRooms) void hub.broadcast(slug, 'presence.changed');
+    return reply.code(204).send();
+  });
 
   app.post<{ Body: { name: string; theme?: RoomTheme; defaultDeckKey?: DeckKey } }>(
     '/api/rooms',
@@ -79,26 +86,26 @@ export function registerRoomRoutes(
     Params: SlugParams;
     Body: { name?: string; theme?: RoomTheme; soundEnabled?: boolean; defaultDeckKey?: DeckKey };
   }>('/api/rooms/:slug', { schema: { body: UpdateRoomBodySchema } }, async (request, reply) => {
-    requireRoomAdmin(request, request.params.slug);
+    requireRoomParticipant(request, request.params.slug);
     service.updateRoom(request.params.slug, request.body);
     void hub.broadcast(request.params.slug, 'room.settings_changed');
     return reply.code(204).send();
   });
 
   app.post<{ Params: SlugParams }>('/api/rooms/:slug/archive', async (request, reply) => {
-    requireRoomAdmin(request, request.params.slug);
+    requireRoomParticipant(request, request.params.slug);
     service.archiveRoom(request.params.slug);
     void hub.broadcast(request.params.slug, 'room.settings_changed');
     return reply.code(204).send();
   });
 
   app.post<{ Params: SlugParams }>('/api/rooms/:slug/restore', async (request, reply) => {
-    requireRoomAdmin(request, request.params.slug);
+    requireRoomParticipant(request, request.params.slug);
     service.restoreRoom(request.params.slug);
     return reply.code(204).send();
   });
 
-  app.post<{ Params: SlugParams; Body: { displayName: string; role: ParticipationRole; avatar: AvatarKey } }>(
+  app.post<{ Params: SlugParams; Body: { displayName: string; role: ParticipationRole; avatar: AvatarKey; avatarImage?: string | null } }>(
     '/api/rooms/:slug/join',
     { schema: { body: JoinRoomBodySchema } },
     async (request, reply) => {
@@ -125,7 +132,7 @@ export function registerRoomRoutes(
   );
 
   app.post<{ Params: SlugParams }>('/api/rooms/:slug/invite-token', async (request, reply) => {
-    requireRoomAdmin(request, request.params.slug);
+    requireRoomParticipant(request, request.params.slug);
     return reply.header('Cache-Control', 'no-store').send({ token: config.accessToken });
   });
 
@@ -133,14 +140,14 @@ export function registerRoomRoutes(
     Params: SlugParams;
     Body: { title: string; timerDurationSeconds?: 60 | 120 | 180 | 300 | null };
   }>('/api/rooms/:slug/stories', { schema: { body: StartStoryBodySchema } }, async (request, reply) => {
-    requireRoomAdmin(request, request.params.slug);
+    requireRoomParticipant(request, request.params.slug);
     service.startStory(request.params.slug, request.body);
     void hub.broadcast(request.params.slug, 'story.started');
     return reply.code(201).send(snapshot(request, request.params.slug));
   });
 
   app.delete<{ Params: SlugParams }>('/api/rooms/:slug/stories/active', async (request, reply) => {
-    requireRoomAdmin(request, request.params.slug);
+    requireRoomParticipant(request, request.params.slug);
     service.cancelStory(request.params.slug);
     void hub.broadcast(request.params.slug, 'story.finalized');
     return reply.code(204).send();
@@ -158,7 +165,7 @@ export function registerRoomRoutes(
   );
 
   app.post<{ Params: SlugParams }>('/api/rooms/:slug/reveal', async (request, reply) => {
-    requireRoomAdmin(request, request.params.slug);
+    requireRoomParticipant(request, request.params.slug);
     service.reveal(request.params.slug);
     void hub.broadcast(request.params.slug, 'story.revealed');
     return reply.code(204).send();
@@ -168,7 +175,7 @@ export function registerRoomRoutes(
     '/api/rooms/:slug/finalize',
     { schema: { body: FinalizeBodySchema } },
     async (request, reply) => {
-      requireRoomAdmin(request, request.params.slug);
+      requireRoomParticipant(request, request.params.slug);
       service.finalize(request.params.slug, request.body);
       void hub.broadcast(request.params.slug, 'story.finalized');
       return reply.code(204).send();
@@ -179,7 +186,7 @@ export function registerRoomRoutes(
     Params: SlugParams;
     Body: { action: 'start' | 'pause' | 'resume' | 'reset'; durationSeconds?: 60 | 120 | 180 | 300 };
   }>('/api/rooms/:slug/timer', { schema: { body: TimerBodySchema } }, async (request, reply) => {
-    requireRoomAdmin(request, request.params.slug);
+    requireRoomParticipant(request, request.params.slug);
     service.timer(request.params.slug, request.body);
     void hub.broadcast(request.params.slug, 'timer.changed');
     return reply.code(204).send();

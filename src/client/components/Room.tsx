@@ -1,18 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ABSTAIN_VALUE } from '../../shared/decks.js';
-import type { AvatarKey, DeckKey, HistoryItem, ParticipationRole, RealtimeEvent, RoomSnapshot, RoomTheme, StoryView, TimerView } from '../../shared/types.js';
+import type { DeckKey, HistoryItem, ParticipationRole, RealtimeEvent, RoomSnapshot, RoomTheme, StoryView, TimerView, UserProfile } from '../../shared/types.js';
 import { api, ApiClientError, realtimeUrl } from '../api.js';
 import type { Locale, TFunction } from '../i18n.js';
 import { playRoomSound, unlockRoomSounds } from '../sound.js';
+import { profileMatches } from '../profile.js';
 import { useErrorMessage } from '../useErrorMessage.js';
 import { Avatar } from './Avatar.js';
 import { TrainArt } from './TrainArt.js';
-import { AVATAR_OPTIONS } from './avatar-options.js';
 
 export function Room({
-  slug, t, locale, navigate, onSessionExpired
+  slug, profile, onEditProfile, t, locale, navigate, onSessionExpired
 }: {
   slug: string;
+  profile: UserProfile;
+  onEditProfile: () => void;
   t: TFunction;
   locale: Locale;
   navigate: (to: string) => void;
@@ -35,6 +37,10 @@ export function Room({
         try { next = await api.rejoin(slug, savedToken); }
         catch { window.localStorage.removeItem(membershipStorageKey(slug)); }
       }
+      if (next.me && !profileMatches(profile, next.me)) {
+        await api.updateProfile(profile);
+        next = await api.room(slug);
+      }
       snapshotRef.current = next;
       setSnapshot(next);
       setError('');
@@ -43,7 +49,7 @@ export function Room({
       const message = messageFor(reason); setError(message);
       if (reason instanceof ApiClientError && reason.code === 'AUTH_REQUIRED') onSessionExpired();
     }
-  }, [messageFor, onSessionExpired, slug]);
+  }, [messageFor, onSessionExpired, profile, slug]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -105,9 +111,9 @@ export function Room({
   }, [joined, slug]);
 
   if (!snapshot) return <main className="loading-screen"><TrainArt variant="empty" /><p>{error || t('loading')}</p></main>;
-  if (!snapshot.me) return <JoinRoom snapshot={snapshot} t={t} onJoin={async (displayName, role, avatar) => {
+  if (!snapshot.me) return <JoinRoom snapshot={snapshot} profile={profile} t={t} onEditProfile={onEditProfile} onJoin={async (role) => {
     try {
-      const joinedRoom = await api.join(slug, { displayName, role, avatar });
+      const joinedRoom = await api.join(slug, { ...profile, role });
       window.localStorage.setItem(membershipStorageKey(slug), joinedRoom.rejoinToken);
       snapshotRef.current = joinedRoom.snapshot;
       setSnapshot(joinedRoom.snapshot);
@@ -116,7 +122,6 @@ export function Room({
     catch (reason) { setError(messageFor(reason)); }
   }} error={error} navigate={navigate} />;
 
-  const isAdmin = Boolean(snapshot.me.isAdmin);
   return (
     <main className="room-page">
       {connectionLost && <div className="connection-banner" role="status">{t('connectionLost')}</div>}
@@ -125,7 +130,7 @@ export function Room({
         <button className="back-link" type="button" onClick={() => navigate('/')}><span>←</span>{t('backLobby')}</button>
         <div className="room-identity"><p>{t('roomCode', { code: snapshot.room.slug })}</p><h1>{snapshot.room.name}</h1></div>
         <div className="room-tools">
-          {isAdmin && <button className="button button-ghost compact" type="button" onClick={async (event) => {
+          <button className="button button-ghost compact" type="button" onClick={async (event) => {
             const button = event.currentTarget;
             try {
               const { token } = await api.inviteToken(slug);
@@ -135,8 +140,8 @@ export function Room({
               button.textContent = t('copied');
               window.setTimeout(() => { button.textContent = old; }, 1200);
             } catch (reason) { setError(messageFor(reason)); }
-          }}>↗ <span>{t('share')}</span></button>}
-          {isAdmin && <>
+          }}>↗ <span>{t('share')}</span></button>
+          <>
             <label className="compact-select"><span>{t('theme')}</span><select value={snapshot.room.theme} onChange={async (event) => {
               const theme = event.target.value as RoomTheme;
               const next = { ...snapshot, room: { ...snapshot.room, theme } };
@@ -155,7 +160,7 @@ export function Room({
             <button className={`sound-toggle ${snapshot.room.soundEnabled ? 'enabled' : ''}`} type="button" aria-pressed={snapshot.room.soundEnabled} onClick={() => void api.updateRoom(slug, { soundEnabled: !snapshot.room.soundEnabled })}>
               <span aria-hidden="true">{snapshot.room.soundEnabled ? '♪' : '×'}</span><small>{snapshot.room.soundEnabled ? t('soundOn') : t('soundOff')}</small>
             </button>
-          </>}
+          </>
         </div>
       </section>
       {error && <div className="page banner banner-error" role="alert">{error}<button type="button" onClick={() => setError('')}>×</button></div>}
@@ -164,7 +169,6 @@ export function Room({
           <StoryArea
             snapshot={snapshot}
             t={t}
-            locale={locale}
             onSnapshot={(next) => { snapshotRef.current = next; setSnapshot(next); }}
             onError={(reason) => setError(messageFor(reason))}
           />
@@ -172,7 +176,7 @@ export function Room({
         <aside className="room-side-column">
           {!snapshot.story && <Participants snapshot={snapshot} t={t} />}
           <History items={snapshot.history} roomTheme={snapshot.room.theme} t={t} locale={locale} />
-          {isAdmin && !snapshot.story && <button className="archive-button" type="button" onClick={async () => {
+          {!snapshot.story && <button className="archive-button" type="button" onClick={async () => {
             if (!window.confirm(t('archiveConfirm'))) return;
             try { await api.archiveRoom(slug); navigate('/'); } catch (reason) { setError(messageFor(reason)); }
           }}>⌑ {t('archiveRoom')}</button>}
@@ -182,25 +186,24 @@ export function Room({
   );
 }
 
-function JoinRoom({ snapshot, t, onJoin, error, navigate }: {
+function JoinRoom({ snapshot, profile, t, onEditProfile, onJoin, error, navigate }: {
   snapshot: RoomSnapshot;
+  profile: UserProfile;
   t: TFunction;
-  onJoin: (name: string, role: ParticipationRole, avatar: AvatarKey) => void;
+  onEditProfile: () => void;
+  onJoin: (role: ParticipationRole) => void;
   error: string;
   navigate: (to: string) => void;
 }) {
-  const [name, setName] = useState('');
   const [role, setRole] = useState<ParticipationRole>('voter');
-  const [avatar, setAvatar] = useState<AvatarKey>('train');
   return (
     <main className="join-page page">
       <button className="back-link" type="button" onClick={() => navigate('/')}><span>←</span>{t('backLobby')}</button>
       <div className="join-layout">
         <section className="join-card">
           <p className="eyebrow">{t('joinEyebrow')}</p><h1>{t('joinTitle')}</h1><p className="room-destination">→ {snapshot.room.name} <code>{snapshot.room.slug}</code></p>
-          <form onSubmit={(event) => { event.preventDefault(); onJoin(name, role, avatar); }}>
-            <label>{t('displayName')}<input autoFocus value={name} onChange={(event) => setName(event.target.value)} maxLength={40} required /></label>
-            <fieldset className="avatar-choice"><legend>{t('avatar')}</legend><div>{AVATAR_OPTIONS.map((option) => <label className={avatar === option.key ? 'selected' : ''} key={option.key} title={option.label}><input type="radio" name="avatar" value={option.key} checked={avatar === option.key} onChange={() => setAvatar(option.key)} /><Avatar avatar={option.key} size="large" /><span className="sr-only">{option.label}</span></label>)}</div></fieldset>
+          <form onSubmit={(event) => { event.preventDefault(); onJoin(role); }}>
+            <div className="join-profile"><Avatar avatar={profile.avatar} avatarImage={profile.avatarImage} size="large" /><span className="join-profile-copy"><small>{t('yourProfile')}</small><strong>{profile.displayName}</strong></span><button className="button button-ghost" type="button" onClick={onEditProfile}>{t('edit')}</button></div>
             <div className="role-choice" role="radiogroup">
               <label className={role === 'voter' ? 'selected' : ''}><input type="radio" name="role" checked={role === 'voter'} onChange={() => setRole('voter')} /><span className="role-icon">♠</span><strong>{t('voter')}</strong></label>
               <label className={role === 'observer' ? 'selected' : ''}><input type="radio" name="role" checked={role === 'observer'} onChange={() => setRole('observer')} /><span className="role-icon">◉</span><strong>{t('observer')}</strong></label>
@@ -215,17 +218,14 @@ function JoinRoom({ snapshot, t, onJoin, error, navigate }: {
   );
 }
 
-function StoryArea({ snapshot, t, locale, onSnapshot, onError }: {
+function StoryArea({ snapshot, t, onSnapshot, onError }: {
   snapshot: RoomSnapshot;
   t: TFunction;
-  locale: Locale;
   onSnapshot: (snapshot: RoomSnapshot) => void;
   onError: (reason: unknown) => void;
 }) {
   const story = snapshot.story;
-  if (!story) return snapshot.me?.isAdmin
-    ? <StartStory snapshot={snapshot} t={t} onSnapshot={onSnapshot} onError={onError} />
-    : <WaitingStage title={t('readyTitle')} copy={t('readyCopyUser')} />;
+  if (!story) return <StartStory snapshot={snapshot} t={t} onSnapshot={onSnapshot} onError={onError} />;
   const link = urlInText(story.title);
   return (
     <>
@@ -233,12 +233,12 @@ function StoryArea({ snapshot, t, locale, onSnapshot, onError }: {
         <div className="story-ticket-label"><span>{t('currentStory')}</span><b>{story.deckKey === 'tshirt' ? 'T-SHIRT' : story.deckKey.toUpperCase()}</b></div>
         {link ? <a className="story-reference" href={link.href} target="_blank" rel="noreferrer" title={story.title}><span className="story-domain">{link.hostname}</span><strong>{story.title}</strong><em>{t('openStory')} ↗</em></a>
           : <div className="story-reference"><span className="story-domain">{t('currentStory')}</span><strong>{story.title}</strong></div>}
-        {story.timer && <Timer slug={snapshot.room.slug} timer={story.timer} isAdmin={Boolean(snapshot.me?.isAdmin)} soundEnabled={snapshot.room.soundEnabled} theme={snapshot.room.theme} t={t} onError={onError} />}
+        {story.timer && <Timer slug={snapshot.room.slug} timer={story.timer} soundEnabled={snapshot.room.soundEnabled} theme={snapshot.room.theme} t={t} onError={onError} />}
       </article>
       {story.status === 'voting' ? (
         <VotingStage snapshot={snapshot} story={story} t={t} onError={onError} />
       ) : (
-        <ResultsStage snapshot={snapshot} story={story} t={t} locale={locale} onError={onError} />
+        <ResultsStage snapshot={snapshot} story={story} t={t} onError={onError} />
       )}
     </>
   );
@@ -249,7 +249,7 @@ function StartStory({ snapshot, t, onSnapshot, onError }: { snapshot: RoomSnapsh
   const [duration, setDuration] = useState<number | null>(null);
   return (
     <section className="start-story stage-card">
-      <div className="stage-intro"><div className="station-orbit"><TrainArt variant="empty" /></div><div><p className="eyebrow">{t('nextStory')}</p><h2>{t('readyTitle')}</h2><p>{t('readyCopyAdmin')}</p></div></div>
+      <div className="stage-intro"><div className="station-orbit"><TrainArt variant="empty" /></div><div><p className="eyebrow">{t('nextStory')}</p><h2>{t('readyTitle')}</h2><p>{t('readyCopy')}</p></div></div>
       <form onSubmit={async (event) => {
         event.preventDefault();
         try { onSnapshot(await api.startStory(snapshot.room.slug, { title, timerDurationSeconds: duration })); }
@@ -284,7 +284,7 @@ function VotingStage({ snapshot, story, t, onError }: { snapshot: RoomSnapshot; 
             }}><strong>{label}</strong>{selected && <small>✓</small>}</button>;
           })}
         </div> : <div className="observer-stage compact-observer"><div className="observer-eye">◉</div><p>{t('observerCopy')}</p></div>}
-        {snapshot.me?.isAdmin && <div className="admin-vote-controls"><button className="button button-danger-ghost" type="button" onClick={async () => { try { await api.cancelStory(snapshot.room.slug); } catch (reason) { onError(reason); } }}>{t('cancelStory')}</button><span /><button className="button button-reveal" disabled={!anyVote} title={!anyVote ? t('revealEmpty') : ''} type="button" onClick={async () => { try { await api.reveal(snapshot.room.slug); } catch (reason) { onError(reason); } }}><b>◉</b>{t('reveal')}</button></div>}
+        <div className="round-controls"><button className="button button-danger-ghost" type="button" onClick={async () => { try { await api.cancelStory(snapshot.room.slug); } catch (reason) { onError(reason); } }}>{t('cancelStory')}</button><span /><button className="button button-reveal" disabled={!anyVote} title={!anyVote ? t('revealEmpty') : ''} type="button" onClick={async () => { try { await api.reveal(snapshot.room.slug); } catch (reason) { onError(reason); } }}><b>◉</b>{t('reveal')}</button></div>
       </div>
     </section>
   );
@@ -310,9 +310,9 @@ function PokerTable({ snapshot, story, revealed, t }: { snapshot: RoomSnapshot; 
         return (
           <article className={`poker-seat ${participant.online ? '' : 'offline'} ${participant.role === 'observer' ? 'observer-seat' : ''}`} key={participant.id} style={style}>
             <div className={`table-vote-card ${participant.hasVoted ? 'voted' : ''} ${isRevealed ? 'is-revealed' : ''} ${vote?.isAbstention ? 'neutral' : ''}`} aria-label={`${participant.displayName} — ${status}`}>
-              <span className="card-inner"><span className="card-back">{participant.role === 'observer' ? '◉' : participant.hasVoted ? '✓' : '?'}</span><span className="card-front">{vote ? vote.isAbstention ? abstainLabel(snapshot.room.theme, t) : vote.value : '—'}</span></span>
+              <span className="card-inner"><span className="card-back">{participant.role === 'observer' ? t('observerCard') : participant.hasVoted ? '✓' : '?'}</span><span className="card-front">{participant.role === 'observer' ? t('observerCard') : vote ? vote.isAbstention ? abstainLabel(snapshot.room.theme, t) : vote.value : '—'}</span></span>
             </div>
-            <div className="seat-profile"><Avatar avatar={participant.avatar} size="large" /><span><strong>{participant.displayName}{participant.isAdmin && <i className="conductor-mark" title={t('admin')}>★</i>}</strong><small>{status}</small></span></div>
+            <div className="seat-profile"><Avatar avatar={participant.avatar} avatarImage={participant.avatarImage} size="large" /><span><strong>{participant.displayName}</strong><small>{status}</small></span></div>
           </article>
         );
       })}
@@ -320,17 +320,16 @@ function PokerTable({ snapshot, story, revealed, t }: { snapshot: RoomSnapshot; 
   );
 }
 
-function ResultsStage({ snapshot, story, t, locale, onError }: { snapshot: RoomSnapshot; story: StoryView; t: TFunction; locale: Locale; onError: (reason: unknown) => void }) {
+function ResultsStage({ snapshot, story, t, onError }: { snapshot: RoomSnapshot; story: StoryView; t: TFunction; onError: (reason: unknown) => void }) {
   const [finalValue, setFinalValue] = useState(story.suggestedValue ?? '');
   return (
     <section className={`results-stage stage-card ${story.unanimous ? 'unanimous' : ''}`}>
       <div className="results-heading"><div><p className="eyebrow">{t('resultTitle')}</p><h2>{story.unanimous ? t('unanimousTitle') : t('resultTitle')}</h2>{story.unanimous && <p>{t('unanimousCopy')}</p>}</div></div>
       <PokerTable snapshot={snapshot} story={story} revealed t={t} />
-      {snapshot.me?.isAdmin && <form className="finalize-form" onSubmit={async (event) => { event.preventDefault(); try { await api.finalize(snapshot.room.slug, finalValue); } catch (reason) { onError(reason); } }}>
+      <form className="finalize-form" onSubmit={async (event) => { event.preventDefault(); try { await api.finalize(snapshot.room.slug, finalValue); } catch (reason) { onError(reason); } }}>
         <label>{t('finalValue')}<input value={finalValue} onChange={(event) => setFinalValue(event.target.value)} placeholder={t('finalValuePlaceholder')} maxLength={32} required /></label>
         <button className="button button-primary button-large" type="submit">{t('validate')} →</button>
-      </form>}
-      {!snapshot.me?.isAdmin && <p className="waiting-final">{new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(new Date(story.revealedAt ?? story.createdAt))} · {t('waiting')}</p>}
+      </form>
     </section>
   );
 }
@@ -338,7 +337,7 @@ function ResultsStage({ snapshot, story, t, locale, onError }: { snapshot: RoomS
 function Participants({ snapshot, t }: { snapshot: RoomSnapshot; t: TFunction }) {
   return (
     <section className="side-card participants-card"><div className="side-card-heading"><div><p className="eyebrow">{t('participantsTitle')}</p><h2>{t('participantsTitle')}</h2></div><span className="count-badge">{snapshot.participants.length}</span></div>
-      <div className="participant-list">{snapshot.participants.length ? snapshot.participants.map((participant) => <div className={`participant-row ${participant.online ? '' : 'offline'}`} key={participant.id}><Avatar avatar={participant.avatar} /><span className="participant-name"><strong>{participant.displayName}{participant.isAdmin && <span className="conductor-mark" title={t('admin')}>★</span>}{participant.id === snapshot.me?.id && <em>YOU</em>}</strong><small>{participant.role === 'observer' ? t('observerBadge') : participant.hasVoted ? t('voted') : t('thinking')}</small></span><i className={participant.hasVoted ? 'vote-ready' : ''}>{participant.role === 'observer' ? '◉' : participant.hasVoted ? '✓' : '…'}</i></div>) : <p className="muted">{t('noParticipants')}</p>}</div>
+      <div className="participant-list">{snapshot.participants.length ? snapshot.participants.map((participant) => <div className={`participant-row ${participant.online ? '' : 'offline'} ${participant.role === 'observer' ? 'is-observer' : ''}`} key={participant.id}><Avatar avatar={participant.avatar} avatarImage={participant.avatarImage} /><span className="participant-name"><strong>{participant.displayName}{participant.id === snapshot.me?.id && <em>YOU</em>}</strong><small>{participant.role === 'observer' ? t('observerBadge') : participant.hasVoted ? t('voted') : t('thinking')}</small></span><i className={participant.hasVoted ? 'vote-ready' : ''}>{participant.role === 'observer' ? t('observerCard') : participant.hasVoted ? '✓' : '…'}</i></div>) : <p className="muted">{t('noParticipants')}</p>}</div>
     </section>
   );
 }
@@ -351,7 +350,7 @@ function History({ items, roomTheme, t, locale }: { items: HistoryItem[]; roomTh
   );
 }
 
-function Timer({ slug, timer, isAdmin, soundEnabled, theme, t, onError }: { slug: string; timer: TimerView; isAdmin: boolean; soundEnabled: boolean; theme: RoomTheme; t: TFunction; onError: (reason: unknown) => void }) {
+function Timer({ slug, timer, soundEnabled, theme, t, onError }: { slug: string; timer: TimerView; soundEnabled: boolean; theme: RoomTheme; t: TFunction; onError: (reason: unknown) => void }) {
   const [remaining, setRemaining] = useState(timer.remainingSeconds);
   const previousRemaining = useRef(timer.remainingSeconds);
   useEffect(() => {
@@ -364,15 +363,11 @@ function Timer({ slug, timer, isAdmin, soundEnabled, theme, t, onError }: { slug
   }, [remaining, soundEnabled, theme]);
   const minutes = Math.floor(remaining / 60).toString().padStart(2, '0');
   const seconds = (remaining % 60).toString().padStart(2, '0');
-  return <div className={`timer-block ${remaining === 0 ? 'expired' : ''}`}><div className="timer-face"><small>{remaining === 0 ? t('timerExpired') : t('timer')}</small><strong>{minutes}<i>:</i>{seconds}</strong><span><i style={{ width: `${Math.max(0, Math.min(100, remaining / timer.durationSeconds * 100))}%` }} /></span></div>{isAdmin && <div className="timer-actions"><button type="button" onClick={() => void api.timer(slug, timer.running ? 'pause' : 'resume').catch(onError)}>{timer.running ? t('timerPause') : remaining === timer.durationSeconds ? t('timerStart') : t('timerResume')}</button><button type="button" onClick={() => void api.timer(slug, 'reset').catch(onError)}>↺</button></div>}</div>;
+  return <div className={`timer-block ${remaining === 0 ? 'expired' : ''}`}><div className="timer-face"><small>{remaining === 0 ? t('timerExpired') : t('timer')}</small><strong>{minutes}<i>:</i>{seconds}</strong><span><i style={{ width: `${Math.max(0, Math.min(100, remaining / timer.durationSeconds * 100))}%` }} /></span></div><div className="timer-actions"><button type="button" onClick={() => void api.timer(slug, timer.running ? 'pause' : 'resume').catch(onError)}>{timer.running ? t('timerPause') : remaining === timer.durationSeconds ? t('timerStart') : t('timerResume')}</button><button type="button" onClick={() => void api.timer(slug, 'reset').catch(onError)}>↺</button></div></div>;
 }
 
 function Celebration({ theme, t }: { theme: RoomTheme; t: TFunction }) {
   return <div className="celebration" role="status"><div className="confetti">{Array.from({ length: 28 }, (_, index) => <i key={index} style={{ '--confetti-index': index, left: `${(index * 37) % 100}%` } as React.CSSProperties} />)}</div><TrainArt variant="hero" /><div><strong>{t('unanimousTitle')}</strong><span>{t('unanimousCopy')}</span></div><b className="celebration-theme">{theme === 'station' ? '✓' : theme === 'turbo' ? '⚡' : '→'}</b></div>;
-}
-
-function WaitingStage({ title, copy }: { title: string; copy: string }) {
-  return <section className="stage-card waiting-stage"><div className="station-orbit"><TrainArt variant="empty" /></div><h2>{title}</h2><p>{copy}</p><div className="waiting-dots"><i /><i /><i /></div></section>;
 }
 
 function urlInText(text: string): URL | null {

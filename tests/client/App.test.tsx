@@ -7,20 +7,22 @@ import { App } from '../../src/client/App.js';
 import type { RoomSummary } from '../../src/shared/types.js';
 
 const rooms: RoomSummary[] = [
-  { id: '1', slug: 'AGILE', name: 'Agile', theme: 'classic', soundEnabled: true, defaultDeckKey: 'scrum', status: 'active', participantCount: 4, activeStoryTitle: null, canAdminister: false, createdAt: '2026-01-01T00:00:00Z' },
-  { id: '2', slug: 'TRAIN', name: 'Train', theme: 'train', soundEnabled: true, defaultDeckKey: 'scrum', status: 'active', participantCount: 2, activeStoryTitle: null, canAdminister: false, createdAt: '2026-01-01T00:00:00Z' },
-  { id: '3', slug: 'QUAI8', name: 'Quai', theme: 'station', soundEnabled: false, defaultDeckKey: 'tshirt', status: 'active', participantCount: 1, activeStoryTitle: null, canAdminister: false, createdAt: '2026-01-01T00:00:00Z' },
-  { id: '4', slug: 'TURBO', name: 'Turbo', theme: 'turbo', soundEnabled: true, defaultDeckKey: 'powers', status: 'active', participantCount: 3, activeStoryTitle: 'Story', canAdminister: false, createdAt: '2026-01-01T00:00:00Z' }
+  { id: '1', slug: 'AGILE', name: 'Agile', theme: 'classic', soundEnabled: true, defaultDeckKey: 'scrum', status: 'active', participantCount: 4, activeStoryTitle: null, isMember: false, createdAt: '2026-01-01T00:00:00Z' },
+  { id: '2', slug: 'TRAIN', name: 'Train', theme: 'train', soundEnabled: true, defaultDeckKey: 'scrum', status: 'active', participantCount: 2, activeStoryTitle: null, isMember: false, createdAt: '2026-01-01T00:00:00Z' },
+  { id: '3', slug: 'QUAI8', name: 'Quai', theme: 'station', soundEnabled: false, defaultDeckKey: 'tshirt', status: 'active', participantCount: 1, activeStoryTitle: null, isMember: false, createdAt: '2026-01-01T00:00:00Z' },
+  { id: '4', slug: 'TURBO', name: 'Turbo', theme: 'turbo', soundEnabled: true, defaultDeckKey: 'powers', status: 'active', participantCount: 3, activeStoryTitle: 'Story', isMember: false, createdAt: '2026-01-01T00:00:00Z' }
 ];
 
 beforeEach(() => {
   localStorage.clear();
   localStorage.setItem('poker-express-locale', 'fr');
+  localStorage.setItem('poker-express-profile', JSON.stringify({ displayName: 'Camille', avatar: 'train', avatarImage: null }));
   window.history.replaceState({}, '', '/');
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
     if (path === '/api/auth/session') return new Response(JSON.stringify({ code: 'AUTH_REQUIRED' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
     if (path === '/api/auth/login' && init?.method === 'POST') return Response.json({ authenticated: true });
+    if (path === '/api/profile' && init?.method === 'PATCH') return new Response(null, { status: 204 });
     if (path === '/api/rooms') return Response.json(rooms);
     throw new Error(`Unexpected request: ${path}`);
   }));
@@ -32,6 +34,22 @@ afterEach(() => {
 });
 
 describe('App', () => {
+  it('demande le profil une seule fois et le conserve dans le navigateur', async () => {
+    localStorage.removeItem('poker-express-profile');
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByLabelText('Jeton d’accès'), 'shared-token-for-tests{Enter}');
+
+    expect(await screen.findByRole('heading', { name: 'Comment vous appelle-t-on ?' })).toBeVisible();
+    await user.type(screen.getByLabelText('Prénom ou pseudo'), 'Noa');
+    await user.click(screen.getByTitle('Hibou'));
+    await user.click(screen.getByRole('button', { name: 'Enregistrer le profil' }));
+
+    expect(await screen.findByRole('heading', { name: 'Où chiffre-t-on aujourd’hui ?' })).toBeVisible();
+    expect(JSON.parse(localStorage.getItem('poker-express-profile') ?? '{}')).toEqual({ displayName: 'Noa', avatar: 'owl', avatarImage: null });
+    expect(screen.getByRole('button', { name: 'Modifier mon profil' })).toBeVisible();
+  });
+
   it('permet une connexion au clavier, rend les quatre thèmes et change de langue', async () => {
     const user = userEvent.setup();
     render(<App />);

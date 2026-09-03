@@ -1,4 +1,4 @@
-import type { ApiErrorBody, AvatarKey, DeckKey, JoinRoomResponse, ParticipationRole, RoomSnapshot, RoomSummary, RoomTheme, SessionView } from '../shared/types.js';
+import type { ApiErrorBody, DeckKey, JoinRoomResponse, ParticipationRole, RoomSnapshot, RoomSummary, RoomTheme, SessionView, UserProfile } from '../shared/types.js';
 
 export class ApiClientError extends Error {
   constructor(public readonly code: string) {
@@ -25,10 +25,11 @@ export const api = {
   login: (token: string) => request<SessionView>('/api/auth/login', { method: 'POST', body: JSON.stringify({ token }) }),
   logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
   rooms: () => request<RoomSummary[]>('/api/rooms'),
+  updateProfile: (body: UserProfile) => request<void>('/api/profile', { method: 'PATCH', body: JSON.stringify(body) }),
   createRoom: (body: { name: string; theme: RoomTheme; defaultDeckKey: DeckKey }) =>
     request<RoomSummary>('/api/rooms', { method: 'POST', body: JSON.stringify(body) }),
   room: (slug: string) => request<RoomSnapshot>(`/api/rooms/${encodeURIComponent(slug)}`),
-  join: (slug: string, body: { displayName: string; role: ParticipationRole; avatar: AvatarKey }) =>
+  join: (slug: string, body: UserProfile & { role: ParticipationRole }) =>
     request<JoinRoomResponse>(`/api/rooms/${encodeURIComponent(slug)}/join`, { method: 'POST', body: JSON.stringify(body) }),
   rejoin: (slug: string, token: string) =>
     request<RoomSnapshot>(`/api/rooms/${encodeURIComponent(slug)}/rejoin`, { method: 'POST', body: JSON.stringify({ token }) }),

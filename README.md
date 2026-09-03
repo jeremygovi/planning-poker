@@ -29,9 +29,9 @@ Il faut uniquement Docker avec Docker Compose, et éventuellement `make`. **Aucu
 
 4. Ouvrez <http://127.0.0.1:3000>.
 
-Sans jeton dans l’URL, l’application le demande à l’arrivée. Toute personne authentifiée peut créer une salle. La première personne qui monte à bord d’une salle en devient automatiquement le **chef de bord** : elle seule pilote ensuite ses réglages, ses manches, son archivage et sa restauration.
+Sans jeton dans l’URL, l’application le demande à l’arrivée. Toute personne authentifiée peut créer une salle. Chaque personne configure ensuite une seule fois son profil dans son navigateur : nom, avatar illustré ou photo personnelle. Ce profil est réutilisé dans toutes les salles et reste modifiable depuis l’en-tête.
 
-Le chef de bord dispose d’un bouton « Copier le lien ». L’invitation mène directement à la salle et embarque le jeton dans le fragment `#token=…`, puis l’application l’efface de la barre d’adresse dès qu’il a été consommé. Le navigateur mémorise aussi localement un jeton de reprise propre au participant afin de retrouver son identité — et ses droits de chef de bord — après un redémarrage du serveur.
+Chaque participant d’une salle peut en modifier les réglages, piloter les manches, la partager, l’archiver et la restaurer. Le rôle choisi à l’entrée sert uniquement à participer au vote ou à observer. L’invitation mène directement à la salle et embarque le jeton dans le fragment `#token=…`, puis l’application l’efface de la barre d’adresse dès qu’il a été consommé. Le navigateur mémorise aussi localement un jeton de reprise propre au participant afin de retrouver son appartenance après un redémarrage du serveur.
 
 ## Commandes Docker
 
@@ -56,11 +56,11 @@ Les équivalents `docker compose` sont visibles dans le [Makefile](./Makefile). 
 
 ## Déroulement d’une estimation
 
-Une salle contient au plus une user story active. Le chef de bord choisit une seule fois pour la salle le jeu Fibonacci, Scrum, puissances de deux ou T-shirt ; ce réglage persiste entre les estimations et reste modifiable lorsqu’aucune manche n’est en cours. Pour lancer une manche, il saisit uniquement un titre libre. Si ce titre contient une URL HTTP(S), l’application la détecte et la rend cliquable.
+Une salle contient au plus une user story active. N’importe quel participant peut choisir pour la salle le jeu Fibonacci, Scrum, puissances de deux ou T-shirt ; ce réglage persiste entre les estimations et reste modifiable lorsqu’aucune manche n’est en cours. Pour lancer une manche, il suffit de saisir un titre libre. Si ce titre contient une URL HTTP(S), l’application la détecte et la rend cliquable.
 
-Les participants et leurs cartes restent visibles autour d’une table de poker pendant tout le vote. Une carte grise passe au vert dès que le participant a choisi ; au reveal, les mêmes cartes se retournent pour afficher uniquement leur valeur. Avant cette révélation, le serveur ne diffuse que l’état « a voté » — jamais la valeur.
+Les participants et leurs cartes restent visibles autour d’une table de poker pendant tout le vote. Une carte grise passe au vert dès qu’un votant a choisi ; au reveal, les mêmes cartes se retournent pour afficher uniquement leur valeur. Les spectateurs ne sont ni comptés parmi les votants, ni autorisés à poser une carte, et leur emplacement porte explicitement la mention `SPEC.`. Avant la révélation, le serveur ne diffuse que l’état « a voté » — jamais la valeur.
 
-Chaque participant choisit l’un des douze avatars SVG originaux à l’embarquement. Lorsque le son global est activé par le chef de bord, des signaux Web Audio procéduraux accompagnent la nouvelle story, la pose d’une carte, la révélation, le départ et la fin du minuteur, la décision finale et le consensus. Aucun média externe n’est chargé.
+Le profil propose douze avatars SVG originaux ou une photo personnelle. La photo est recadrée, redimensionnée et compressée côté navigateur avant d’être partagée dans les salles ; aucun média externe n’est chargé. Lorsque le son global est activé, des signaux Web Audio procéduraux accompagnent la nouvelle story, la pose d’une carte, la révélation, le départ et la fin du minuteur, la décision finale et le consensus.
 
 La carte neutre est toujours stockée comme `abstain`, mais devient Banane, Café ou Joker selon le thème. Elle est exclue du consensus et des calculs. À la révélation :
 
@@ -70,7 +70,7 @@ La carte neutre est toujours stockée comme `abstain`, mais devient Banane, Caf�
 - uniquement des cartes neutres ne produit aucune suggestion ;
 - au moins deux votes non neutres identiques déclenchent l’animation de consensus si le son de la salle est actif.
 
-La suggestion reste indicative : le chef de bord peut valider une valeur finale libre. Titre, instantané du jeu de la salle, votes révélés, suggestion, valeur finale et horodatages rejoignent alors l’historique.
+La suggestion reste indicative : n’importe quel participant peut valider une valeur finale libre. Titre, instantané du jeu de la salle, votes révélés, suggestion, valeur finale et horodatages rejoignent alors l’historique.
 
 ## Persistance et sauvegarde
 
@@ -117,7 +117,7 @@ Sur Docker Desktop, remplacez l’URL par `http://host.docker.internal:3000` si 
 - `src/shared` : contrats métier, jeux et schémas partagés ;
 - `src/server` : serveur Fastify autoritaire, sessions, SQLite, commandes REST et diffusion WebSocket ;
 - `src/client` : SPA React/Vite, thèmes, SVG originaux, animations et sons Web Audio procéduraux ;
-- `migrations` : schéma SQL initial unique, appliqué transactionnellement ;
+- `migrations` : migrations SQL versionnées, appliquées transactionnellement ;
 - `tests` : règles d’estimation, API, temps réel, React et Playwright ;
 - `data` : montage persistant, ignoré par Git à l’exception de `.gitkeep`.
 

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { DECKS } from '../../shared/decks.js';
-import type { DeckKey, RoomSummary, RoomTheme } from '../../shared/types.js';
+import type { DeckKey, RoomSummary, RoomTheme, UserProfile } from '../../shared/types.js';
 import { api } from '../api.js';
 import type { TFunction } from '../i18n.js';
 import { useErrorMessage } from '../useErrorMessage.js';
 import { TrainArt } from './TrainArt.js';
 
-export function Lobby({ t, navigate }: { t: TFunction; navigate: (to: string) => void }) {
+export function Lobby({ profile, t, navigate }: { profile: UserProfile; t: TFunction; navigate: (to: string) => void }) {
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -25,17 +25,20 @@ export function Lobby({ t, navigate }: { t: TFunction; navigate: (to: string) =>
           try { await api.rejoin(room.slug, token); return true; }
           catch { window.localStorage.removeItem(key); return false; }
         }));
-        if (recovered.some(Boolean)) nextRooms = await api.rooms();
+        if (recovered.some(Boolean)) {
+          await api.updateProfile(profile);
+          nextRooms = await api.rooms();
+        }
       }
       setRooms(nextRooms);
       setError('');
     }
     catch (reason) { setError(messageFor(reason)); }
     finally { setLoading(false); }
-  }, [messageFor]);
+  }, [messageFor, profile]);
   useEffect(() => { document.documentElement.dataset.theme = 'classic'; void load(); }, [load]);
   const active = rooms.filter((room) => room.status === 'active');
-  const archived = rooms.filter((room) => room.status === 'archived' && room.canAdminister);
+  const archived = rooms.filter((room) => room.status === 'archived' && room.isMember);
 
   return (
     <main className="page lobby-page">

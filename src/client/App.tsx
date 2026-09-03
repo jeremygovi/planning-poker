@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { SessionView } from '../shared/types.js';
+import type { SessionView, UserProfile } from '../shared/types.js';
 import { api, ApiClientError } from './api.js';
+import { Avatar } from './components/Avatar.js';
 import { Lobby } from './components/Lobby.js';
+import { ProfileDialog } from './components/ProfileDialog.js';
 import { RouteLine, TrainArt } from './components/TrainArt.js';
 import { Room } from './components/Room.js';
 import { errorTranslationKey, translate, type Locale, type TFunction } from './i18n.js';
+import { readStoredProfile, storedMemberships, storeProfile } from './profile.js';
 
 function currentPath(): string {
   return window.location.pathname.replace(/\/+$/, '') || '/';
@@ -16,7 +19,10 @@ export function App() {
     return stored === 'en' || stored === 'fr' ? stored : navigator.language.startsWith('en') ? 'en' : 'fr';
   });
   const [session, setSession] = useState<SessionView | null | undefined>(undefined);
+  const [profile, setProfile] = useState<UserProfile | null>(readStoredProfile);
+  const [editingProfile, setEditingProfile] = useState(false);
   const [path, setPath] = useState(currentPath);
+  const [initialInviteToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('token'));
   const t = useCallback<TFunction>((key, values) => translate(locale, key, values), [locale]);
 
   useEffect(() => {
@@ -25,15 +31,13 @@ export function App() {
   }, [locale]);
 
   useEffect(() => {
-    const fragment = new URLSearchParams(window.location.hash.slice(1));
-    const inviteToken = fragment.get('token');
-    if (inviteToken) {
+    if (initialInviteToken) {
       window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
-      api.login(inviteToken).then(setSession).catch(() => setSession(null));
+      api.login(initialInviteToken).then(setSession).catch(() => setSession(null));
       return;
     }
     api.session().then(setSession).catch(() => setSession(null));
-  }, []);
+  }, [initialInviteToken]);
 
   useEffect(() => {
     const onPopState = () => setPath(currentPath());
@@ -52,6 +56,21 @@ export function App() {
   if (session === undefined) return <Loading t={t} />;
   if (!session) return <Login t={t} locale={locale} setLocale={changeLocale} onLogin={setSession} />;
 
+  const saveProfile = async (nextProfile: UserProfile) => {
+    await Promise.all(storedMemberships().map(async ({ key, slug, token }) => {
+      try { await api.rejoin(slug, token); }
+      catch { window.localStorage.removeItem(key); }
+    }));
+    await api.updateProfile(nextProfile);
+    storeProfile(nextProfile);
+    setProfile(nextProfile);
+    setEditingProfile(false);
+  };
+
+  if (!profile) {
+    return <div className="app-shell"><ProfileDialog initial={null} required t={t} onSave={saveProfile} /></div>;
+  }
+
   const roomMatch = path.match(/^\/rooms\/([^/]+)$/);
   return (
     <div className="app-shell">
@@ -59,6 +78,8 @@ export function App() {
         t={t}
         locale={locale}
         setLocale={changeLocale}
+        profile={profile}
+        onEditProfile={() => setEditingProfile(true)}
         onHome={() => navigate('/')}
         onLogout={async () => {
           await api.logout();
@@ -72,20 +93,23 @@ export function App() {
         }}
       />
       {roomMatch ? (
-        <Room slug={decodeURIComponent(roomMatch[1])} t={t} locale={locale} navigate={navigate} onSessionExpired={expireSession} />
+        <Room slug={decodeURIComponent(roomMatch[1])} profile={profile} onEditProfile={() => setEditingProfile(true)} t={t} locale={locale} navigate={navigate} onSessionExpired={expireSession} />
       ) : (
-        <Lobby t={t} navigate={navigate} />
+        <Lobby profile={profile} t={t} navigate={navigate} />
       )}
+      {editingProfile && <ProfileDialog initial={profile} t={t} onSave={saveProfile} onClose={() => setEditingProfile(false)} />}
     </div>
   );
 }
 
 function Header({
-  t, locale, setLocale, onHome, onLogout
+  t, locale, setLocale, profile, onEditProfile, onHome, onLogout
 }: {
   t: TFunction;
   locale: Locale;
   setLocale: (locale: Locale) => void;
+  profile: UserProfile;
+  onEditProfile: () => void;
   onHome: () => void;
   onLogout: () => void;
 }) {
@@ -96,7 +120,7 @@ function Header({
         <span><strong>POKER EXPRESS</strong><small>{t('brandTagline')}</small></span>
       </button>
       <nav className="header-actions" aria-label={t('ariaNavigation')}>
-        <span className="role-pill role-user"><span />{t('participant')}</span>
+        <button className="profile-button" type="button" onClick={onEditProfile} aria-label={t('editProfile')}><Avatar avatar={profile.avatar} avatarImage={profile.avatarImage} size="small" /><span>{profile.displayName}</span></button>
         <label className="language-switch">
           <span className="sr-only">{t('language')}</span>
           <select value={locale} onChange={(event) => setLocale(event.target.value as Locale)} aria-label={t('language')}>

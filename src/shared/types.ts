@@ -5,6 +5,12 @@ export type RoomStatus = 'active' | 'archived';
 export type StoryStatus = 'voting' | 'revealed' | 'finalized' | 'cancelled';
 export type AvatarKey = 'train' | 'rocket' | 'robot' | 'fox' | 'owl' | 'cat' | 'cactus' | 'comet' | 'frog' | 'panda' | 'alien' | 'pirate';
 
+export interface UserProfile {
+  displayName: string;
+  avatar: AvatarKey;
+  avatarImage: string | null;
+}
+
 export interface DeckDefinition {
   key: DeckKey;
   values: readonly string[];
@@ -25,7 +31,7 @@ export interface RoomSummary {
   status: RoomStatus;
   participantCount: number;
   activeStoryTitle: string | null;
-  canAdminister: boolean;
+  isMember: boolean;
   createdAt: string;
 }
 
@@ -34,7 +40,7 @@ export interface ParticipantView {
   displayName: string;
   role: ParticipationRole;
   avatar: AvatarKey;
-  isAdmin: boolean;
+  avatarImage: string | null;
   online: boolean;
   hasVoted: boolean;
 }
