@@ -23,6 +23,7 @@ interface RoomRow {
   name: string;
   theme: RoomTheme;
   sound_enabled: number;
+  auto_reveal_enabled: number;
   default_deck_key: DeckKey;
   status: 'active' | 'archived';
   created_at: string;
@@ -168,6 +169,7 @@ export class RoomService {
       name: room.name,
       theme: room.theme,
       soundEnabled: Boolean(room.sound_enabled),
+      autoRevealEnabled: Boolean(room.auto_reveal_enabled),
       defaultDeckKey: room.default_deck_key,
       status: room.status,
       participantCount,
@@ -208,24 +210,26 @@ export class RoomService {
     const slug = randomBytes(5).toString('base64url').toUpperCase();
     const createdAt = nowIso();
     this.db.prepare(`
-      INSERT INTO rooms (id, slug, name, theme, sound_enabled, default_deck_key, status, created_at)
-      VALUES (?, ?, ?, ?, 1, ?, 'active', ?)
+      INSERT INTO rooms (id, slug, name, theme, sound_enabled, auto_reveal_enabled, default_deck_key, status, created_at)
+      VALUES (?, ?, ?, ?, 1, 1, ?, 'active', ?)
     `).run(id, slug, name, theme, defaultDeckKey, createdAt);
     return this.roomSummary(this.roomBySlug(slug), 0, false);
   }
 
-  updateRoom(slug: string, input: { name?: unknown; theme?: unknown; soundEnabled?: unknown; defaultDeckKey?: unknown }): void {
+  updateRoom(slug: string, input: { name?: unknown; theme?: unknown; soundEnabled?: unknown; autoRevealEnabled?: unknown; defaultDeckKey?: unknown }): void {
     const room = this.roomBySlug(slug);
     const name = input.name === undefined ? room.name : cleanText(input.name, 80, 'INVALID_ROOM_NAME');
     const theme = input.theme === undefined ? room.theme : input.theme;
     const soundEnabled = input.soundEnabled === undefined ? Boolean(room.sound_enabled) : input.soundEnabled;
+    const autoRevealEnabled = input.autoRevealEnabled === undefined ? Boolean(room.auto_reveal_enabled) : input.autoRevealEnabled;
     const deck = input.defaultDeckKey === undefined ? room.default_deck_key : input.defaultDeckKey;
     if (typeof theme !== 'string' || !THEMES.has(theme as RoomTheme)) throw new AppError('INVALID_THEME', 400);
     if (typeof soundEnabled !== 'boolean') throw new AppError('INVALID_SOUND_SETTING', 400);
+    if (typeof autoRevealEnabled !== 'boolean') throw new AppError('INVALID_AUTO_REVEAL_SETTING', 400);
     if (!isDeckKey(deck)) throw new AppError('INVALID_DECK', 400);
     this.db.prepare(`
-      UPDATE rooms SET name = ?, theme = ?, sound_enabled = ?, default_deck_key = ? WHERE id = ?
-    `).run(name, theme, soundEnabled ? 1 : 0, deck, room.id);
+      UPDATE rooms SET name = ?, theme = ?, sound_enabled = ?, auto_reveal_enabled = ?, default_deck_key = ? WHERE id = ?
+    `).run(name, theme, soundEnabled ? 1 : 0, autoRevealEnabled ? 1 : 0, deck, room.id);
   }
 
   archiveRoom(slug: string): void {
@@ -260,13 +264,10 @@ export class RoomService {
       if (room.status !== 'active') throw new AppError('ROOM_ARCHIVED', 409);
       const existing = this.participant(existingParticipantId, room.id);
       if (existing) {
-        if (this.activeStory(room.id) && existing.role !== role) {
-          throw new AppError('MEMBERSHIP_LOCKED', 409);
-        }
         const timestamp = nowIso();
         this.db.prepare(`
           UPDATE participants
-          SET display_name = ?, role = ?, avatar = ?, avatar_image = ?, is_admin = 0, rejoin_token_hash = ?, last_seen_at = ?
+          SET display_name = ?, role = ?, avatar = ?, avatar_image = ?, rejoin_token_hash = ?, last_seen_at = ?
           WHERE id = ?
         `).run(displayName, role, avatar, avatarImage, tokenHash(rejoinToken), timestamp, existing.id);
         return {
@@ -313,6 +314,24 @@ export class RoomService {
     })();
   }
 
+  updateRole(slug: string, participantId: string | null, role: unknown): void {
+    const room = this.roomBySlug(slug);
+    const participant = this.participant(participantId, room.id);
+    if (!participant) throw new AppError('JOIN_REQUIRED', 403);
+    if (typeof role !== 'string' || !PARTICIPATION_ROLES.has(role as ParticipationRole)) {
+      throw new AppError('INVALID_PARTICIPATION_ROLE', 400);
+    }
+    if (participant.role === role) return;
+    this.db.transaction(() => {
+      const story = this.activeStory(room.id);
+      if (story?.status === 'voting' && role === 'observer') {
+        this.db.prepare('DELETE FROM votes WHERE story_id = ? AND participant_id = ?').run(story.id, participant.id);
+      }
+      this.db.prepare('UPDATE participants SET role = ?, last_seen_at = ? WHERE id = ?')
+        .run(role, nowIso(), participant.id);
+    })();
+  }
+
   rejoinRoom(slug: string, rejoinToken: string): ParticipantRow {
     const room = this.roomBySlug(slug);
     const participant = this.db.prepare(
@@ -341,7 +360,7 @@ export class RoomService {
     `);
     const updateParticipant = this.db.prepare(`
       UPDATE participants
-      SET display_name = ?, avatar = ?, avatar_image = ?, is_admin = 0, last_seen_at = ?
+      SET display_name = ?, avatar = ?, avatar_image = ?, last_seen_at = ?
       WHERE id = ?
     `);
     return this.db.transaction(() => {

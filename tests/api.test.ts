@@ -17,7 +17,7 @@ async function login(token = ACCESS_TOKEN): Promise<string> {
   return response.headers['set-cookie']!.split(';', 1)[0];
 }
 
-async function createRoom(cookie: string, name = 'Orient Express', defaultDeckKey: 'scrum' | 'fibonacci' | 'powers' | 'tshirt' = 'scrum', theme: 'classic' | 'train' | 'station' | 'turbo' = 'classic'): Promise<RoomSummary> {
+async function createRoom(cookie: string, name = 'Orient Express', defaultDeckKey: 'scrum' | 'fibonacci' | 'powers' | 'tshirt' | 'approval' = 'scrum', theme: 'classic' | 'train' | 'station' | 'turbo' = 'classic'): Promise<RoomSummary> {
   const response = await app.inject({
     method: 'POST', url: '/api/rooms', headers: { cookie },
     payload: { name, theme, defaultDeckKey }
@@ -225,6 +225,54 @@ describe('Poker Express API', () => {
     const secondSnapshot = (await app.inject({ method: 'GET', url: `/api/rooms/${second.slug}`, headers: { cookie: aliceCookie } })).json() as RoomSnapshot;
     expect(firstSnapshot.story).toMatchObject({ suggestedValue: '3', unanimous: false });
     expect(secondSnapshot.story).toBeNull();
+  });
+
+  it('autorise un spectateur à révéler et le changement de rôle pendant un vote OUI/NON', async () => {
+    const observerCookie = await login();
+    const voterCookie = await login();
+    const room = await createRoom(observerCookie, 'Décision produit', 'approval');
+    await join(observerCookie, room.slug, 'Camille', 'observer');
+    await join(voterCookie, room.slug, 'Alice', 'voter');
+
+    expect((await app.inject({
+      method: 'PATCH', url: `/api/rooms/${room.slug}`, headers: { cookie: observerCookie },
+      payload: { autoRevealEnabled: true }
+    })).statusCode).toBe(204);
+    await app.inject({
+      method: 'POST', url: `/api/rooms/${room.slug}/stories`, headers: { cookie: observerCookie },
+      payload: { title: 'Sommes-nous favorables ?' }
+    });
+    await app.inject({
+      method: 'PUT', url: `/api/rooms/${room.slug}/vote`, headers: { cookie: voterCookie },
+      payload: { value: 'yes' }
+    });
+
+    const observerRole = await app.inject({
+      method: 'PATCH', url: `/api/rooms/${room.slug}/role`, headers: { cookie: voterCookie },
+      payload: { role: 'observer' }
+    });
+    expect(observerRole.statusCode).toBe(200);
+    expect((observerRole.json() as RoomSnapshot).me).toMatchObject({ role: 'observer', hasVoted: false });
+
+    const voterRole = await app.inject({
+      method: 'PATCH', url: `/api/rooms/${room.slug}/role`, headers: { cookie: voterCookie },
+      payload: { role: 'voter' }
+    });
+    expect(voterRole.statusCode).toBe(200);
+    await app.inject({
+      method: 'PUT', url: `/api/rooms/${room.slug}/vote`, headers: { cookie: voterCookie },
+      payload: { value: 'yes' }
+    });
+
+    const reveal = await app.inject({
+      method: 'POST', url: `/api/rooms/${room.slug}/reveal`, headers: { cookie: observerCookie }
+    });
+    expect(reveal.statusCode).toBe(204);
+    const revealed = (await app.inject({
+      method: 'GET', url: `/api/rooms/${room.slug}`, headers: { cookie: observerCookie }
+    })).json() as RoomSnapshot;
+    expect(revealed.room).toMatchObject({ defaultDeckKey: 'approval', autoRevealEnabled: true });
+    expect(revealed.story).toMatchObject({ status: 'revealed', suggestedValue: 'yes' });
   });
 
   it('archive et restaure une salle sans supprimer ses données', async () => {

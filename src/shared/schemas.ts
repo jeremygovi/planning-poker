@@ -17,7 +17,7 @@ export const CreateRoomBodySchema = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 80 }),
   theme: Type.Optional(Type.Union([Type.Literal('classic'), Type.Literal('train'), Type.Literal('station'), Type.Literal('turbo')])),
   defaultDeckKey: Type.Optional(Type.Union([
-    Type.Literal('fibonacci'), Type.Literal('scrum'), Type.Literal('powers'), Type.Literal('tshirt')
+    Type.Literal('fibonacci'), Type.Literal('scrum'), Type.Literal('powers'), Type.Literal('tshirt'), Type.Literal('approval')
   ]))
 }, { additionalProperties: false });
 
@@ -25,10 +25,15 @@ export const UpdateRoomBodySchema = Type.Partial(Type.Object({
   name: Type.String({ minLength: 1, maxLength: 80 }),
   theme: Type.Union([Type.Literal('classic'), Type.Literal('train'), Type.Literal('station'), Type.Literal('turbo')]),
   soundEnabled: Type.Boolean(),
+  autoRevealEnabled: Type.Boolean(),
   defaultDeckKey: Type.Union([
-    Type.Literal('fibonacci'), Type.Literal('scrum'), Type.Literal('powers'), Type.Literal('tshirt')
+    Type.Literal('fibonacci'), Type.Literal('scrum'), Type.Literal('powers'), Type.Literal('tshirt'), Type.Literal('approval')
   ])
 }, { additionalProperties: false }));
+
+export const UpdateRoleBodySchema = Type.Object({
+  role: Type.Union([Type.Literal('voter'), Type.Literal('observer')])
+}, { additionalProperties: false });
 
 export const JoinRoomBodySchema = Type.Object({
   displayName: Type.String({ minLength: 1, maxLength: 40 }),

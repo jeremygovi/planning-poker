@@ -14,6 +14,7 @@ COPY . .
 
 FROM dependencies AS builder
 COPY tsconfig.json tsconfig.client.json tsconfig.server.json vite.config.ts index.html ./
+COPY public ./public
 COPY src ./src
 RUN npm run build && npm prune --omit=dev
 

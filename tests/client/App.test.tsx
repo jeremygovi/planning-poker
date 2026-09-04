@@ -7,10 +7,10 @@ import { App } from '../../src/client/App.js';
 import type { RoomSummary } from '../../src/shared/types.js';
 
 const rooms: RoomSummary[] = [
-  { id: '1', slug: 'AGILE', name: 'Agile', theme: 'classic', soundEnabled: true, defaultDeckKey: 'scrum', status: 'active', participantCount: 4, activeStoryTitle: null, isMember: false, createdAt: '2026-01-01T00:00:00Z' },
-  { id: '2', slug: 'TRAIN', name: 'Train', theme: 'train', soundEnabled: true, defaultDeckKey: 'scrum', status: 'active', participantCount: 2, activeStoryTitle: null, isMember: false, createdAt: '2026-01-01T00:00:00Z' },
-  { id: '3', slug: 'QUAI8', name: 'Quai', theme: 'station', soundEnabled: false, defaultDeckKey: 'tshirt', status: 'active', participantCount: 1, activeStoryTitle: null, isMember: false, createdAt: '2026-01-01T00:00:00Z' },
-  { id: '4', slug: 'TURBO', name: 'Turbo', theme: 'turbo', soundEnabled: true, defaultDeckKey: 'powers', status: 'active', participantCount: 3, activeStoryTitle: 'Story', isMember: false, createdAt: '2026-01-01T00:00:00Z' }
+  { id: '1', slug: 'AGILE', name: 'Agile', theme: 'classic', soundEnabled: true, autoRevealEnabled: false, defaultDeckKey: 'scrum', status: 'active', participantCount: 4, activeStoryTitle: null, isMember: false, createdAt: '2026-01-01T00:00:00Z' },
+  { id: '2', slug: 'TRAIN', name: 'Train', theme: 'train', soundEnabled: true, autoRevealEnabled: false, defaultDeckKey: 'scrum', status: 'active', participantCount: 2, activeStoryTitle: null, isMember: false, createdAt: '2026-01-01T00:00:00Z' },
+  { id: '3', slug: 'QUAI8', name: 'Quai', theme: 'station', soundEnabled: false, autoRevealEnabled: false, defaultDeckKey: 'tshirt', status: 'active', participantCount: 1, activeStoryTitle: null, isMember: false, createdAt: '2026-01-01T00:00:00Z' },
+  { id: '4', slug: 'TURBO', name: 'Turbo', theme: 'turbo', soundEnabled: true, autoRevealEnabled: false, defaultDeckKey: 'powers', status: 'active', participantCount: 3, activeStoryTitle: 'Story', isMember: false, createdAt: '2026-01-01T00:00:00Z' }
 ];
 
 beforeEach(() => {
@@ -62,6 +62,14 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Rejoindre Train' }).closest('article')).toHaveClass('room-card-train');
     expect(screen.getByRole('button', { name: 'Rejoindre Quai' }).closest('article')).toHaveClass('room-card-station');
     expect(screen.getByRole('button', { name: 'Rejoindre Turbo' }).closest('article')).toHaveClass('room-card-turbo');
+    await user.click(screen.getByRole('button', { name: /Nouvelle salle/ }));
+    expect(screen.getByRole('option', { name: 'Quai 1' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Quai 2' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Quai 3' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Quai 4' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'OUI / NON' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Train du Sprint' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Turbo TGV' })).not.toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText('Langue'), 'en');
     expect(await screen.findByRole('heading', { name: 'Where are we sizing today?' })).toBeVisible();

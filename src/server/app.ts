@@ -2,6 +2,7 @@ import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { existsSync, mkdirSync } from 'node:fs';
+import path from 'node:path';
 import type { Config } from './config.js';
 import { registerAuth } from './auth.js';
 import { openDatabase } from './database/database.js';
@@ -59,8 +60,11 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
 
   app.setNotFoundHandler((request, reply) => {
     if (request.url.startsWith('/api/')) return reply.code(404).send({ code: 'ROUTE_NOT_FOUND' });
-    if (existsSync(config.publicDir)) return reply.sendFile('index.html');
-    return reply.code(404).send({ code: 'CLIENT_NOT_BUILT' });
+    if (!existsSync(config.publicDir)) return reply.code(404).send({ code: 'CLIENT_NOT_BUILT' });
+    const requestPath = new URL(request.url, 'http://localhost').pathname;
+    const isPageNavigation = ['GET', 'HEAD'].includes(request.method) && path.posix.extname(requestPath) === '';
+    if (isPageNavigation) return reply.sendFile('index.html');
+    return reply.code(404).send({ code: 'ROUTE_NOT_FOUND' });
   });
 
   app.setErrorHandler((error, request, reply) => {

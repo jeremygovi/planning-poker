@@ -116,7 +116,7 @@ function Header({
   return (
     <header className="app-header">
       <button type="button" className="brand" onClick={onHome} aria-label="Poker Express">
-        <span className="brand-symbol" aria-hidden="true"><i /><i /><i /></span>
+        <BrandMark />
         <span><strong>POKER EXPRESS</strong><small>{t('brandTagline')}</small></span>
       </button>
       <nav className="header-actions" aria-label={t('ariaNavigation')}>
@@ -154,7 +154,7 @@ function Login({
       </div>
       <section className="login-hero">
         <div className="login-copy-block">
-          <div className="login-brand"><span className="brand-symbol"><i /><i /><i /></span> POKER EXPRESS</div>
+          <div className="login-brand"><BrandMark /> POKER EXPRESS</div>
           <p className="eyebrow">{t('loginEyebrow')}</p>
           <h1>{t('loginTitle')}</h1>
           <p>{t('loginCopy')}</p>
@@ -177,6 +177,20 @@ function Login({
         </div>
       </section>
     </main>
+  );
+}
+
+function BrandMark() {
+  return (
+    <span className="brand-symbol" aria-hidden="true">
+      <svg className="brand-mark-art" viewBox="0 0 40 40">
+        <path className="brand-mark-body" d="M7 11.5A5.5 5.5 0 0 1 12.5 6h13A7.5 7.5 0 0 1 33 13.5V27H7Z" />
+        <path className="brand-mark-window" d="M12 11h7v7h-7zm10 0h3.5a3.5 3.5 0 0 1 3.5 3.5V18h-7z" />
+        <path className="brand-mark-stripe" d="M9 22h22M5 32h30" />
+        <circle className="brand-mark-wheel" cx="13" cy="28" r="3.5" />
+        <circle className="brand-mark-wheel" cx="27" cy="28" r="3.5" />
+      </svg>
+    </span>
   );
 }
 

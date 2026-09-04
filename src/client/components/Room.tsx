@@ -25,6 +25,7 @@ export function Room({
   const [connectionLost, setConnectionLost] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
   const messageFor = useErrorMessage(t);
+  const handleError = useCallback((reason: unknown) => setError(messageFor(reason)), [messageFor]);
   const joined = Boolean(snapshot?.me);
   const celebrationTimer = useRef<number | null>(null);
   const snapshotRef = useRef<RoomSnapshot | null>(null);
@@ -156,10 +157,24 @@ export function Room({
               snapshotRef.current = next;
               setSnapshot(next);
               try { await api.updateRoom(slug, { defaultDeckKey }); } catch (reason) { setError(messageFor(reason)); await load(); }
-            }}><option value="scrum">Scrum</option><option value="fibonacci">Fibonacci</option><option value="powers">1 · 2 · 4 · 8</option><option value="tshirt">T-shirt</option></select></label>
-            <button className={`sound-toggle ${snapshot.room.soundEnabled ? 'enabled' : ''}`} type="button" aria-pressed={snapshot.room.soundEnabled} onClick={() => void api.updateRoom(slug, { soundEnabled: !snapshot.room.soundEnabled })}>
+            }}><option value="scrum">Scrum</option><option value="fibonacci">Fibonacci</option><option value="powers">1 · 2 · 4 · 8</option><option value="tshirt">T-shirt</option><option value="approval">{t('approvalDeck')}</option></select></label>
+            <button className={`sound-toggle ${snapshot.room.soundEnabled ? 'enabled' : ''}`} type="button" aria-pressed={snapshot.room.soundEnabled} aria-label={snapshot.room.soundEnabled ? t('soundOn') : t('soundOff')} title={snapshot.room.soundEnabled ? t('soundOn') : t('soundOff')} onClick={() => void api.updateRoom(slug, { soundEnabled: !snapshot.room.soundEnabled })}>
               <span aria-hidden="true">{snapshot.room.soundEnabled ? '♪' : '×'}</span><small>{snapshot.room.soundEnabled ? t('soundOn') : t('soundOff')}</small>
             </button>
+            <button className={`toolbar-toggle auto-reveal-toggle ${snapshot.room.autoRevealEnabled ? 'enabled' : ''}`} type="button" aria-pressed={snapshot.room.autoRevealEnabled} aria-label={snapshot.room.autoRevealEnabled ? t('autoRevealOn') : t('autoRevealOff')} title={snapshot.room.autoRevealEnabled ? t('autoRevealOn') : t('autoRevealOff')} onClick={async () => {
+              const autoRevealEnabled = !snapshot.room.autoRevealEnabled;
+              const next = { ...snapshot, room: { ...snapshot.room, autoRevealEnabled } };
+              snapshotRef.current = next;
+              setSnapshot(next);
+              try { await api.updateRoom(slug, { autoRevealEnabled }); } catch (reason) { setError(messageFor(reason)); await load(); }
+            }}><span aria-hidden="true">3·2·1</span></button>
+            <button className="toolbar-toggle role-toggle" type="button" aria-label={snapshot.me.role === 'voter' ? t('switchToObserver') : t('switchToVoter')} title={snapshot.me.role === 'voter' ? t('switchToObserver') : t('switchToVoter')} onClick={async () => {
+              try {
+                const next = await api.updateRole(slug, snapshot.me?.role === 'voter' ? 'observer' : 'voter');
+                snapshotRef.current = next;
+                setSnapshot(next);
+              } catch (reason) { setError(messageFor(reason)); }
+            }}><span aria-hidden="true">{snapshot.me.role === 'voter' ? '♠' : '◉'}</span><small>{snapshot.me.role === 'voter' ? t('voter') : t('observerBadge')}</small></button>
           </>
         </div>
       </section>
@@ -170,7 +185,7 @@ export function Room({
             snapshot={snapshot}
             t={t}
             onSnapshot={(next) => { snapshotRef.current = next; setSnapshot(next); }}
-            onError={(reason) => setError(messageFor(reason))}
+            onError={handleError}
           />
         </div>
         <aside className="room-side-column">
@@ -230,7 +245,7 @@ function StoryArea({ snapshot, t, onSnapshot, onError }: {
   return (
     <>
       <article className="story-ticket">
-        <div className="story-ticket-label"><span>{t('currentStory')}</span><b>{story.deckKey === 'tshirt' ? 'T-SHIRT' : story.deckKey.toUpperCase()}</b></div>
+        <div className="story-ticket-label"><span>{t('currentStory')}</span><b>{deckLabel(story.deckKey, t)}</b></div>
         {link ? <a className="story-reference" href={link.href} target="_blank" rel="noreferrer" title={story.title}><span className="story-domain">{link.hostname}</span><strong>{story.title}</strong><em>{t('openStory')} ↗</em></a>
           : <div className="story-reference"><span className="story-domain">{t('currentStory')}</span><strong>{story.title}</strong></div>}
         {story.timer && <Timer slug={snapshot.room.slug} timer={story.timer} soundEnabled={snapshot.room.soundEnabled} theme={snapshot.room.theme} t={t} onError={onError} />}
@@ -256,7 +271,7 @@ function StartStory({ snapshot, t, onSnapshot, onError }: { snapshot: RoomSnapsh
         catch (reason) { onError(reason); }
       }}>
         <div className="story-fields"><label className="story-title-field">{t('storyTitle')}<span><i aria-hidden="true">✦</i><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t('storyTitlePlaceholder')} required maxLength={2048} /></span></label></div>
-        <div className="form-grid story-options"><label>{t('timer')}<select value={duration ?? ''} onChange={(event) => setDuration(event.target.value ? Number(event.target.value) : null)}><option value="">{t('noTimer')}</option><option value="60">1 min</option><option value="120">2 min</option><option value="180">3 min</option><option value="300">5 min</option></select></label><p className="room-deck-reminder"><span>{t('deck')}</span><strong>{deckLabel(snapshot.room.defaultDeckKey)}</strong></p></div>
+        <div className="form-grid story-options"><label>{t('timer')}<select value={duration ?? ''} onChange={(event) => setDuration(event.target.value ? Number(event.target.value) : null)}><option value="">{t('noTimer')}</option><option value="60">1 min</option><option value="120">2 min</option><option value="180">3 min</option><option value="300">5 min</option></select></label><p className="room-deck-reminder"><span>{t('deck')}</span><strong>{deckLabel(snapshot.room.defaultDeckKey, t)}</strong></p></div>
         <button className="button button-primary button-large launch-button" type="submit"><span className="signal-mini" />{t('launchVote')} →</button>
       </form>
     </section>
@@ -266,22 +281,47 @@ function StartStory({ snapshot, t, onSnapshot, onError }: { snapshot: RoomSnapsh
 function VotingStage({ snapshot, story, t, onError }: { snapshot: RoomSnapshot; story: StoryView; t: TFunction; onError: (reason: unknown) => void }) {
   const canVote = snapshot.me?.role === 'voter';
   const anyVote = snapshot.participants.some((participant) => participant.hasVoted);
+  const onlineVoters = snapshot.participants.filter((participant) => participant.role === 'voter' && participant.online);
+  const allVotersHaveVoted = onlineVoters.length > 0 && onlineVoters.every((participant) => participant.hasVoted);
+  const [autoRevealCountdown, setAutoRevealCountdown] = useState<number | null>(null);
+  useEffect(() => {
+    if (!snapshot.room.autoRevealEnabled || !allVotersHaveVoted) {
+      setAutoRevealCountdown(null);
+      return;
+    }
+    setAutoRevealCountdown(3);
+    const interval = window.setInterval(() => {
+      setAutoRevealCountdown((value) => value === null ? null : Math.max(1, value - 1));
+    }, 1000);
+    const timeout = window.setTimeout(() => {
+      setAutoRevealCountdown(null);
+      void api.reveal(snapshot.room.slug).catch((reason) => {
+        if (!(reason instanceof ApiClientError && ['VOTE_LOCKED', 'NO_ACTIVE_STORY'].includes(reason.code))) onError(reason);
+      });
+    }, 3000);
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+    };
+  }, [allVotersHaveVoted, onError, snapshot.room.autoRevealEnabled, snapshot.room.slug, story.id]);
   return (
     <section className="voting-stage stage-card">
-      <div className="voting-heading"><div><p className="eyebrow">{t('participantsTitle')}</p><h2>{t('participantsTitle')}</h2><p>{t('chooseCardCopy')}</p></div><span className="privacy-badge">● {snapshot.participants.filter((participant) => participant.hasVoted).length}/{snapshot.participants.filter((participant) => participant.role === 'voter').length}</span></div>
+      <div className="voting-heading"><div><h2>{t('participantsTitle')}</h2><p>{t('chooseCardCopy')}</p></div><span className="privacy-badge">● {snapshot.participants.filter((participant) => participant.hasVoted).length}/{snapshot.participants.filter((participant) => participant.role === 'voter').length}</span></div>
+      {autoRevealCountdown !== null && <div className="auto-reveal-countdown" role="status"><span>{t('autoRevealCountdown')}</span><strong>{autoRevealCountdown}</strong><i /></div>}
       <PokerTable snapshot={snapshot} story={story} revealed={false} t={t} />
       <div className="estimate-dock">
-        <div className="estimate-dock-heading"><div><p className="eyebrow">{canVote ? t('chooseCard') : t('observerBadge')}</p><h3>{canVote ? t('chooseCard') : t('observerCopy')}</h3></div>{canVote && snapshot.ownVote && <p className="vote-confirmation">✓ {t('waitingReveal')}</p>}</div>
+        <div className="estimate-dock-heading"><h3>{canVote ? t('chooseCard') : t('observerBadge')}</h3>{canVote && snapshot.ownVote && <p className="vote-confirmation">✓ {t('waitingReveal')}</p>}</div>
         {canVote ? <div className="estimate-deck" role="radiogroup" aria-label={t('ariaDeck')}>
           {[...story.deckValues, ABSTAIN_VALUE].map((value, index) => {
             const selected = snapshot.ownVote === value;
-            const label = value === ABSTAIN_VALUE ? abstainLabel(snapshot.room.theme, t) : value;
-            return <button key={value} data-estimate-value={value} className={`estimate-card ${selected ? 'selected' : ''} ${value === ABSTAIN_VALUE ? 'abstain-card' : ''}`} style={{ '--card-index': index } as React.CSSProperties} role="radio" aria-checked={selected} type="button" onClick={async () => {
+            const label = value === ABSTAIN_VALUE ? abstainLabel(snapshot.room.theme, t) : voteValueLabel(value, t);
+            const approvalVote = story.deckKey === 'approval' && value !== ABSTAIN_VALUE;
+            return <button key={value} data-estimate-value={value} className={`estimate-card ${selected ? 'selected' : ''} ${value === ABSTAIN_VALUE ? 'abstain-card' : ''} ${approvalVote ? 'approval-card' : ''}`} style={{ '--card-index': index } as React.CSSProperties} role="radio" aria-checked={selected} type="button" onClick={async () => {
               try {
                 await api.vote(snapshot.room.slug, value);
                 if (snapshot.room.soundEnabled) playRoomSound('vote', snapshot.room.theme);
               } catch (reason) { onError(reason); }
-            }}><strong>{label}</strong>{selected && <small>✓</small>}</button>;
+            }}>{approvalVote && <span className="approval-symbol approval-symbol-top" aria-hidden="true">{value === 'yes' ? '👍' : '👎'}</span>}<strong>{label}</strong>{approvalVote && <span className="approval-symbol approval-symbol-bottom" aria-hidden="true">{value === 'yes' ? '👍' : '👎'}</span>}{selected && <small>✓</small>}</button>;
           })}
         </div> : <div className="observer-stage compact-observer"><div className="observer-eye">◉</div><p>{t('observerCopy')}</p></div>}
         <div className="round-controls"><button className="button button-danger-ghost" type="button" onClick={async () => { try { await api.cancelStory(snapshot.room.slug); } catch (reason) { onError(reason); } }}>{t('cancelStory')}</button><span /><button className="button button-reveal" disabled={!anyVote} title={!anyVote ? t('revealEmpty') : ''} type="button" onClick={async () => { try { await api.reveal(snapshot.room.slug); } catch (reason) { onError(reason); } }}><b>◉</b>{t('reveal')}</button></div>
@@ -294,23 +334,36 @@ function PokerTable({ snapshot, story, revealed, t }: { snapshot: RoomSnapshot; 
   const votes = new Map((story.revealedVotes ?? []).map((vote) => [vote.participantId, vote]));
   const voters = snapshot.participants.filter((participant) => participant.role === 'voter').length;
   const played = snapshot.participants.filter((participant) => participant.hasVoted).length;
+  const approvalSuggestion = revealed && story.deckKey === 'approval' ? story.suggestedValue : null;
+  const suggestionLabel = story.suggestedValue
+    ? approvalSuggestion
+      ? <img src={approvalReactionAsset(approvalSuggestion)} alt={voteValueLabel(approvalSuggestion, t)} />
+      : voteValueLabel(story.suggestedValue, t)
+    : '—';
   return (
     <div className={`poker-table-shell ${revealed ? 'cards-revealed' : ''}`} aria-label={t('participantsTitle')}>
-      <div className="poker-table-felt"><div className="table-center-mark"><small>{revealed ? t('suggestion') : t('votes')}</small><strong>{revealed ? story.suggestedValue ?? '—' : `${played}/${voters}`}</strong></div></div>
+      <div className="poker-table-felt"><div className="table-center-mark"><small>{revealed ? t('suggestion') : t('votes')}</small><strong className={approvalSuggestion ? `approval-suggestion approval-${approvalSuggestion}` : ''} title={revealed && story.suggestedValue ? voteValueLabel(story.suggestedValue, t) : undefined}>{revealed ? suggestionLabel : `${played}/${voters}`}</strong></div></div>
       {snapshot.participants.map((participant, index) => {
         const angle = (Math.PI * 2 * index / Math.max(snapshot.participants.length, 1)) - Math.PI / 2;
+        const isUpperSeat = Math.sin(angle) < -0.15;
         const vote = votes.get(participant.id);
         const isRevealed = revealed && Boolean(vote);
-        const status = participant.role === 'observer' ? t('observerBadge') : vote ? (vote.isAbstention ? abstainLabel(snapshot.room.theme, t) : vote.value) : participant.hasVoted ? t('voted') : t('thinking');
+        const approvalVote = story.deckKey === 'approval' && vote && !vote.isAbstention ? vote.value : null;
+        const cardFrontValue = participant.role === 'observer'
+          ? t('observerCard')
+          : vote
+            ? vote.isAbstention ? abstainLabel(snapshot.room.theme, t) : approvalVote ? approvalResultIcon(approvalVote) : voteValueLabel(vote.value, t)
+            : '—';
+        const status = participant.role === 'observer' ? t('observerBadge') : vote ? (vote.isAbstention ? abstainLabel(snapshot.room.theme, t) : voteValueLabel(vote.value, t)) : participant.hasVoted ? t('voted') : t('thinking');
         const style = {
-          '--seat-x': `${50 + Math.cos(angle) * 43}%`,
-          '--seat-y': `${50 + Math.sin(angle) * 39}%`,
+          '--seat-x': `${50 + Math.cos(angle) * 40}%`,
+          '--seat-y': `${50 + Math.sin(angle) * 28}%`,
           '--seat-delay': `${index * 55}ms`
         } as React.CSSProperties;
         return (
-          <article className={`poker-seat ${participant.online ? '' : 'offline'} ${participant.role === 'observer' ? 'observer-seat' : ''}`} key={participant.id} style={style}>
+          <article className={`poker-seat ${isUpperSeat ? 'upper-seat' : ''} ${participant.online ? '' : 'offline'} ${participant.role === 'observer' ? 'observer-seat' : ''}`} key={participant.id} style={style}>
             <div className={`table-vote-card ${participant.hasVoted ? 'voted' : ''} ${isRevealed ? 'is-revealed' : ''} ${vote?.isAbstention ? 'neutral' : ''}`} aria-label={`${participant.displayName} — ${status}`}>
-              <span className="card-inner"><span className="card-back">{participant.role === 'observer' ? t('observerCard') : participant.hasVoted ? '✓' : '?'}</span><span className="card-front">{participant.role === 'observer' ? t('observerCard') : vote ? vote.isAbstention ? abstainLabel(snapshot.room.theme, t) : vote.value : '—'}</span></span>
+              <span className="card-inner"><span className="card-back">{participant.role === 'observer' ? t('observerCard') : participant.hasVoted ? '✓' : '?'}</span><span className={`card-front ${approvalVote ? `approval-result approval-${approvalVote}` : ''}`}>{cardFrontValue}</span></span>
             </div>
             <div className="seat-profile"><Avatar avatar={participant.avatar} avatarImage={participant.avatarImage} size="large" /><span><strong>{participant.displayName}</strong><small>{status}</small></span></div>
           </article>
@@ -321,7 +374,7 @@ function PokerTable({ snapshot, story, revealed, t }: { snapshot: RoomSnapshot; 
 }
 
 function ResultsStage({ snapshot, story, t, onError }: { snapshot: RoomSnapshot; story: StoryView; t: TFunction; onError: (reason: unknown) => void }) {
-  const [finalValue, setFinalValue] = useState(story.suggestedValue ?? '');
+  const [finalValue, setFinalValue] = useState(story.suggestedValue ? voteValueLabel(story.suggestedValue, t) : '');
   return (
     <section className={`results-stage stage-card ${story.unanimous ? 'unanimous' : ''}`}>
       <div className="results-heading"><div><p className="eyebrow">{t('resultTitle')}</p><h2>{story.unanimous ? t('unanimousTitle') : t('resultTitle')}</h2>{story.unanimous && <p>{t('unanimousCopy')}</p>}</div></div>
@@ -345,7 +398,7 @@ function Participants({ snapshot, t }: { snapshot: RoomSnapshot; t: TFunction })
 function History({ items, roomTheme, t, locale }: { items: HistoryItem[]; roomTheme: RoomTheme; t: TFunction; locale: Locale }) {
   return (
     <section className="side-card history-card"><div className="side-card-heading"><div><p className="eyebrow">HISTORIQUE</p><h2>{t('history')}</h2></div><span className="count-badge">{items.length}</span></div>
-      {items.length ? <div className="history-list">{items.map((item) => { const link = urlInText(item.title); return <details key={item.id}><summary><span className="history-route"><i /><span><strong>{item.title}</strong><small>{new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(item.finalizedAt))}</small></span></span><b>{item.finalValue}</b></summary><div className="history-detail">{link && <a href={link.href} target="_blank" rel="noreferrer">{link.hostname} ↗</a>}<p><span>{t('suggested')}</span><strong>{item.suggestedValue ?? '—'}</strong></p><div className="history-votes">{item.votes.map((vote) => <span key={vote.participantId}>{vote.displayName} <b>{vote.isAbstention ? abstainLabel(roomTheme, t) : vote.value}</b></span>)}</div></div></details>; })}</div> : <p className="muted history-empty">{t('noHistory')}</p>}
+      {items.length ? <div className="history-list">{items.map((item) => { const link = urlInText(item.title); return <details key={item.id}><summary><span className="history-route"><i /><span><strong>{item.title}</strong><small>{new Intl.DateTimeFormat(locale, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(item.finalizedAt))}</small></span></span><b>{item.finalValue}</b></summary><div className="history-detail">{link && <a href={link.href} target="_blank" rel="noreferrer">{link.hostname} ↗</a>}<p><span>{t('suggested')}</span><strong>{item.suggestedValue ? voteValueLabel(item.suggestedValue, t) : '—'}</strong></p><div className="history-votes">{item.votes.map((vote) => <span key={vote.participantId}>{vote.displayName} <b>{vote.isAbstention ? abstainLabel(roomTheme, t) : voteValueLabel(vote.value, t)}</b></span>)}</div></div></details>; })}</div> : <p className="muted history-empty">{t('noHistory')}</p>}
     </section>
   );
 }
@@ -381,10 +434,25 @@ function urlInText(text: string): URL | null {
   }
 }
 
-function deckLabel(deck: DeckKey): string {
+function deckLabel(deck: DeckKey, t: TFunction): string {
+  if (deck === 'approval') return t('approvalDeck');
   if (deck === 'tshirt') return 'T-shirt';
   if (deck === 'powers') return '1 · 2 · 4 · 8';
   return deck === 'fibonacci' ? 'Fibonacci' : 'Scrum';
+}
+
+function voteValueLabel(value: string, t: TFunction): string {
+  if (value === 'yes') return t('voteYes');
+  if (value === 'no') return t('voteNo');
+  return value;
+}
+
+function approvalResultIcon(value: string): string {
+  return value === 'yes' ? '👍' : '👎';
+}
+
+function approvalReactionAsset(value: string): string {
+  return value === 'yes' ? '/reaction-yes.gif' : '/reaction-no.gif';
 }
 
 function membershipStorageKey(slug: string): string {

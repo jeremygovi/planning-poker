@@ -75,7 +75,7 @@ function RoomCard({ room, index, t, onClick }: { room: RoomSummary; index: numbe
       <div className="room-card-top"><span className={`status-dot ${room.activeStoryTitle ? 'live' : ''}`} /><span>{room.activeStoryTitle ? t('votingNow') : t('waiting')}</span><code>{room.slug}</code></div>
       <TrainArt value={String(room.participantCount || '')} />
       <h3>{room.name}</h3>
-      <div className="room-card-meta"><span>{t('peopleOnline', { count: room.participantCount })}</span><span>{room.defaultDeckKey === 'tshirt' ? 'T-shirt' : DECKS[room.defaultDeckKey].values.slice(1, 5).join(' · ')}</span></div>
+      <div className="room-card-meta"><span>{t('peopleOnline', { count: room.participantCount })}</span><span>{room.defaultDeckKey === 'tshirt' ? 'T-shirt' : room.defaultDeckKey === 'approval' ? t('approvalDeck') : DECKS[room.defaultDeckKey].values.slice(1, 5).join(' · ')}</span></div>
       <button className="room-card-action" type="button" onClick={onClick} aria-label={`${t('joinRoom')} ${room.name}`}><span>{t('joinRoom')}</span><b>→</b></button>
     </article>
   );
@@ -92,7 +92,7 @@ function CreateRoomDialog({ t, onClose, onCreate }: { t: TFunction; onClose: () 
         <form onSubmit={(event) => { event.preventDefault(); onCreate({ name, theme, defaultDeckKey: deck }); }}>
           <label>{t('roomName')}<input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder={t('roomNamePlaceholder')} maxLength={80} required /></label>
           <div className="form-grid"><label>{t('theme')}<select value={theme} onChange={(event) => setTheme(event.target.value as RoomTheme)}><option value="classic">{t('themeClassic')}</option><option value="train">{t('themeTrain')}</option><option value="station">{t('themeStation')}</option><option value="turbo">{t('themeTurbo')}</option></select></label>
-          <label>{t('deck')}<select value={deck} onChange={(event) => setDeck(event.target.value as DeckKey)}><option value="scrum">Scrum</option><option value="fibonacci">Fibonacci</option><option value="powers">1 · 2 · 4 · 8</option><option value="tshirt">T-shirt</option></select></label></div>
+          <label>{t('deck')}<select value={deck} onChange={(event) => setDeck(event.target.value as DeckKey)}><option value="scrum">Scrum</option><option value="fibonacci">Fibonacci</option><option value="powers">1 · 2 · 4 · 8</option><option value="tshirt">T-shirt</option><option value="approval">{t('approvalDeck')}</option></select></label></div>
           <div className="modal-actions"><button className="button button-ghost" type="button" onClick={onClose}>{t('cancel')}</button><button className="button button-primary" type="submit">{t('create')}</button></div>
         </form>
       </section>

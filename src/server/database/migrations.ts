@@ -24,4 +24,3 @@ export function runMigrations(db: Database.Database, migrationsDir: string): voi
     if (!applied.has(file)) apply(file, readFileSync(path.join(migrationsDir, file), 'utf8'));
   }
 }
-

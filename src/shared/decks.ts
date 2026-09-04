@@ -22,6 +22,11 @@ export const DECKS: Record<DeckKey, DeckDefinition> = {
     key: 'tshirt',
     values: ['XS', 'S', 'M', 'L', 'XL', 'XXL'],
     numeric: false
+  },
+  approval: {
+    key: 'approval',
+    values: ['yes', 'no'],
+    numeric: false
   }
 };
 
@@ -32,4 +37,3 @@ export function isDeckKey(value: unknown): value is DeckKey {
 export function parseDeckNumber(value: string): number {
   return value === '½' ? 0.5 : Number(value);
 }
-

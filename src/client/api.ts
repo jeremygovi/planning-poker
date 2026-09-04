@@ -35,8 +35,10 @@ export const api = {
     request<RoomSnapshot>(`/api/rooms/${encodeURIComponent(slug)}/rejoin`, { method: 'POST', body: JSON.stringify({ token }) }),
   inviteToken: (slug: string) =>
     request<{ token: string }>(`/api/rooms/${encodeURIComponent(slug)}/invite-token`, { method: 'POST' }),
-  updateRoom: (slug: string, body: { name?: string; theme?: RoomTheme; soundEnabled?: boolean; defaultDeckKey?: DeckKey }) =>
+  updateRoom: (slug: string, body: { name?: string; theme?: RoomTheme; soundEnabled?: boolean; autoRevealEnabled?: boolean; defaultDeckKey?: DeckKey }) =>
     request<void>(`/api/rooms/${encodeURIComponent(slug)}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  updateRole: (slug: string, role: ParticipationRole) =>
+    request<RoomSnapshot>(`/api/rooms/${encodeURIComponent(slug)}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }),
   archiveRoom: (slug: string) => request<void>(`/api/rooms/${encodeURIComponent(slug)}/archive`, { method: 'POST' }),
   restoreRoom: (slug: string) => request<void>(`/api/rooms/${encodeURIComponent(slug)}/restore`, { method: 'POST' }),
   startStory: (slug: string, body: { title: string; timerDurationSeconds: number | null }) =>

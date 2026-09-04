@@ -17,15 +17,16 @@ describe('migrations SQLite', () => {
     const database = openDatabase(path.join(directory, 'poker-express.db'), path.resolve('migrations'));
     const columns = (table: string) => (database.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(({ name }) => name);
 
-    expect(columns('rooms')).toContain('theme');
+    expect(columns('rooms')).toEqual(expect.arrayContaining(['theme', 'auto_reveal_enabled', 'default_deck_key']));
     expect(columns('rooms')).not.toContain('visual_theme');
-    expect(columns('participants')).toEqual(expect.arrayContaining(['avatar', 'avatar_image', 'is_admin', 'rejoin_token_hash']));
+    expect(columns('participants')).toEqual(expect.arrayContaining(['avatar', 'avatar_image', 'rejoin_token_hash']));
+    expect(columns('participants')).not.toContain('is_admin');
     expect(columns('stories')).toContain('title');
     expect(columns('stories')).not.toContain('url');
 
     database.prepare(`
       INSERT INTO rooms (id, slug, name, theme, sound_enabled, default_deck_key, status, created_at)
-      VALUES ('room-1', 'AGILE', 'Salle Agile', 'classic', 1, 'fibonacci', 'active', '2026-01-01T00:00:00.000Z')
+      VALUES ('room-1', 'AGILE', 'Salle Agile', 'classic', 1, 'approval', 'active', '2026-01-01T00:00:00.000Z')
     `).run();
     database.prepare(`
       INSERT INTO participants (id, room_id, display_name, role, avatar, created_at, last_seen_at)
@@ -36,10 +37,10 @@ describe('migrations SQLite', () => {
       VALUES ('story-1', 'room-1', 'EXP-1 — titre unique', 'fibonacci', '["0","1"]', 'voting', '2026-01-01T00:00:00.000Z')
     `).run();
 
-    expect(database.prepare('SELECT theme, default_deck_key FROM rooms').get()).toEqual({ theme: 'classic', default_deck_key: 'fibonacci' });
-    expect(database.prepare('SELECT avatar, avatar_image, is_admin FROM participants').get()).toEqual({ avatar: 'pirate', avatar_image: null, is_admin: 0 });
+    expect(database.prepare('SELECT theme, auto_reveal_enabled, default_deck_key FROM rooms').get()).toEqual({ theme: 'classic', auto_reveal_enabled: 1, default_deck_key: 'approval' });
+    expect(database.prepare('SELECT avatar, avatar_image FROM participants').get()).toEqual({ avatar: 'pirate', avatar_image: null });
     expect(database.prepare('SELECT title FROM stories').get()).toEqual({ title: 'EXP-1 — titre unique' });
-    expect((database.prepare('SELECT name FROM schema_migrations').all() as { name: string }[]).map(({ name }) => name)).toEqual(['001_initial.sql', '002_shared_profiles.sql']);
+    expect((database.prepare('SELECT name FROM schema_migrations').all() as { name: string }[]).map(({ name }) => name)).toEqual(['001_initial.sql']);
     database.close();
   });
 });

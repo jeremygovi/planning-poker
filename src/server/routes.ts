@@ -8,6 +8,7 @@ import {
   StartStoryBodySchema,
   TimerBodySchema,
   UpdateRoomBodySchema,
+  UpdateRoleBodySchema,
   VoteBodySchema
 } from '../shared/schemas.js';
 import type { AvatarKey, DeckKey, ParticipationRole, RoomTheme, UserProfile } from '../shared/types.js';
@@ -84,7 +85,7 @@ export function registerRoomRoutes(
 
   app.patch<{
     Params: SlugParams;
-    Body: { name?: string; theme?: RoomTheme; soundEnabled?: boolean; defaultDeckKey?: DeckKey };
+    Body: { name?: string; theme?: RoomTheme; soundEnabled?: boolean; autoRevealEnabled?: boolean; defaultDeckKey?: DeckKey };
   }>('/api/rooms/:slug', { schema: { body: UpdateRoomBodySchema } }, async (request, reply) => {
     requireRoomParticipant(request, request.params.slug);
     service.updateRoom(request.params.slug, request.body);
@@ -127,6 +128,17 @@ export function registerRoomRoutes(
       const roomId = service.roomId(request.params.slug);
       const participant = service.rejoinRoom(request.params.slug, request.body.token);
       auth.setParticipantId(request, roomId, participant.id);
+      return reply.send(snapshot(request, request.params.slug));
+    }
+  );
+
+  app.patch<{ Params: SlugParams; Body: { role: ParticipationRole } }>(
+    '/api/rooms/:slug/role',
+    { schema: { body: UpdateRoleBodySchema } },
+    async (request, reply) => {
+      const roomId = service.roomId(request.params.slug);
+      service.updateRole(request.params.slug, auth.getParticipantId(request, roomId), request.body.role);
+      void hub.broadcast(request.params.slug, 'presence.changed');
       return reply.send(snapshot(request, request.params.slug));
     }
   );

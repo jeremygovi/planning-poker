@@ -1,6 +1,6 @@
 export type ParticipationRole = 'voter' | 'observer';
 export type RoomTheme = 'classic' | 'train' | 'station' | 'turbo';
-export type DeckKey = 'fibonacci' | 'scrum' | 'powers' | 'tshirt';
+export type DeckKey = 'fibonacci' | 'scrum' | 'powers' | 'tshirt' | 'approval';
 export type RoomStatus = 'active' | 'archived';
 export type StoryStatus = 'voting' | 'revealed' | 'finalized' | 'cancelled';
 export type AvatarKey = 'train' | 'rocket' | 'robot' | 'fox' | 'owl' | 'cat' | 'cactus' | 'comet' | 'frog' | 'panda' | 'alien' | 'pirate';
@@ -27,6 +27,7 @@ export interface RoomSummary {
   name: string;
   theme: RoomTheme;
   soundEnabled: boolean;
+  autoRevealEnabled: boolean;
   defaultDeckKey: DeckKey;
   status: RoomStatus;
   participantCount: number;
