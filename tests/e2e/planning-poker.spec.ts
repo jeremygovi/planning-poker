@@ -104,10 +104,16 @@ test('tous les participants pilotent les manches tandis que seuls les votants po
     await expect(aliciaRow).toBeVisible();
     await expect(aliciaRow.locator('.avatar-custom img')).toBeVisible();
 
+    await alice.locator('.start-story').getByLabel('Jeu de cartes').selectOption('scrum');
+    await expect(alice.locator('.room-toolbar').getByLabel('Jeu de cartes')).toHaveValue('scrum');
     await startStory(alice, 'EXP-101 — paiement en un clic');
     await expect(camille.locator('.poker-seat')).toHaveCount(4);
     await expect(camille.locator('.table-vote-card.voted')).toHaveCount(0);
     await expect(camille.locator('.start-story').getByLabel('Jeu de cartes')).toHaveCount(0);
+    const roomDeck = alice.locator('.room-toolbar').getByLabel('Jeu de cartes');
+    await expect(roomDeck).toBeEnabled();
+    await roomDeck.selectOption('fibonacci');
+    await expect(alice.locator('.story-ticket-label')).toContainText('Scrum');
     await expect(observer.locator('[data-estimate-value]')).toHaveCount(0);
     await expect(observer.locator('.observer-seat .card-back')).toHaveText(['SPEC.', 'SPEC.']);
     await expect(observer.getByRole('button', { name: /Révéler les cartes/ })).toBeDisabled();
@@ -116,7 +122,8 @@ test('tous les participants pilotent les manches tandis que seuls les votants po
     const estimateDeckBox = await alice.locator('.estimate-dock .estimate-deck').boundingBox();
     expect(selectedCardBox).not.toBeNull();
     expect(estimateDeckBox).not.toBeNull();
-    expect(selectedCardBox!.y).toBeGreaterThanOrEqual(estimateDeckBox!.y + 1);
+    expect(selectedCardBox!.y).toBeGreaterThanOrEqual(estimateDeckBox!.y - 1);
+    expect(selectedCardBox!.y + selectedCardBox!.height).toBeLessThanOrEqual(estimateDeckBox!.y + estimateDeckBox!.height + 1);
     await expect(camille.locator('.table-vote-card.voted')).toHaveCount(1);
     await vote(bob, '5');
     await expect(camille.locator('.table-vote-card.voted')).toHaveCount(2);

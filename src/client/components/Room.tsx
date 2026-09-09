@@ -151,13 +151,13 @@ export function Room({
               document.documentElement.dataset.theme = theme;
               try { await api.updateRoom(slug, { theme }); } catch (reason) { setError(messageFor(reason)); await load(); }
             }}><option value="classic">{t('themeClassic')}</option><option value="train">{t('themeTrain')}</option><option value="station">{t('themeStation')}</option><option value="turbo">{t('themeTurbo')}</option></select></label>
-            <label className="compact-select"><span>{t('deck')}</span><select value={snapshot.room.defaultDeckKey} disabled={Boolean(snapshot.story)} title={snapshot.story ? t('deckLocked') : ''} onChange={async (event) => {
+            <label className="compact-select"><span>{t('deck')}</span><select value={snapshot.room.defaultDeckKey} title={snapshot.story ? t('deckNextRound') : ''} onChange={async (event) => {
               const defaultDeckKey = event.target.value as DeckKey;
               const next = { ...snapshot, room: { ...snapshot.room, defaultDeckKey } };
               snapshotRef.current = next;
               setSnapshot(next);
               try { await api.updateRoom(slug, { defaultDeckKey }); } catch (reason) { setError(messageFor(reason)); await load(); }
-            }}><option value="scrum">Scrum</option><option value="fibonacci">Fibonacci</option><option value="powers">1 · 2 · 4 · 8</option><option value="tshirt">T-shirt</option><option value="approval">{t('approvalDeck')}</option></select></label>
+            }}><DeckOptions t={t} /></select></label>
             <button className={`sound-toggle ${snapshot.room.soundEnabled ? 'enabled' : ''}`} type="button" aria-pressed={snapshot.room.soundEnabled} aria-label={snapshot.room.soundEnabled ? t('soundOn') : t('soundOff')} title={snapshot.room.soundEnabled ? t('soundOn') : t('soundOff')} onClick={() => void api.updateRoom(slug, { soundEnabled: !snapshot.room.soundEnabled })}>
               <span aria-hidden="true">{snapshot.room.soundEnabled ? '♪' : '×'}</span><small>{snapshot.room.soundEnabled ? t('soundOn') : t('soundOff')}</small>
             </button>
@@ -262,6 +262,7 @@ function StoryArea({ snapshot, t, onSnapshot, onError }: {
 function StartStory({ snapshot, t, onSnapshot, onError }: { snapshot: RoomSnapshot; t: TFunction; onSnapshot: (value: RoomSnapshot) => void; onError: (reason: unknown) => void }) {
   const [title, setTitle] = useState('');
   const [duration, setDuration] = useState<number | null>(null);
+  const [updatingDeck, setUpdatingDeck] = useState(false);
   return (
     <section className="start-story stage-card">
       <div className="stage-intro"><div className="station-orbit"><TrainArt variant="empty" /></div><div><p className="eyebrow">{t('nextStory')}</p><h2>{t('readyTitle')}</h2><p>{t('readyCopy')}</p></div></div>
@@ -271,11 +272,23 @@ function StartStory({ snapshot, t, onSnapshot, onError }: { snapshot: RoomSnapsh
         catch (reason) { onError(reason); }
       }}>
         <div className="story-fields"><label className="story-title-field">{t('storyTitle')}<span><i aria-hidden="true">✦</i><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={t('storyTitlePlaceholder')} required maxLength={2048} /></span></label></div>
-        <div className="form-grid story-options"><label>{t('timer')}<select value={duration ?? ''} onChange={(event) => setDuration(event.target.value ? Number(event.target.value) : null)}><option value="">{t('noTimer')}</option><option value="60">1 min</option><option value="120">2 min</option><option value="180">3 min</option><option value="300">5 min</option></select></label><p className="room-deck-reminder"><span>{t('deck')}</span><strong>{deckLabel(snapshot.room.defaultDeckKey, t)}</strong></p></div>
-        <button className="button button-primary button-large launch-button" type="submit"><span className="signal-mini" />{t('launchVote')} →</button>
+        <div className="form-grid story-options"><label>{t('timer')}<select value={duration ?? ''} onChange={(event) => setDuration(event.target.value ? Number(event.target.value) : null)}><option value="">{t('noTimer')}</option><option value="60">1 min</option><option value="120">2 min</option><option value="180">3 min</option><option value="300">5 min</option></select></label><label>{t('deck')}<select value={snapshot.room.defaultDeckKey} onChange={async (event) => {
+          const defaultDeckKey = event.target.value as DeckKey;
+          const previous = snapshot;
+          setUpdatingDeck(true);
+          onSnapshot({ ...snapshot, room: { ...snapshot.room, defaultDeckKey } });
+          try { await api.updateRoom(snapshot.room.slug, { defaultDeckKey }); }
+          catch (reason) { onSnapshot(previous); onError(reason); }
+          finally { setUpdatingDeck(false); }
+        }} disabled={updatingDeck}><DeckOptions t={t} /></select></label></div>
+        <button className="button button-primary button-large launch-button" type="submit" disabled={updatingDeck}><span className="signal-mini" />{t('launchVote')} →</button>
       </form>
     </section>
   );
+}
+
+function DeckOptions({ t }: { t: TFunction }) {
+  return <><option value="scrum">Scrum</option><option value="fibonacci">Fibonacci</option><option value="powers">1 · 2 · 4 · 8</option><option value="tshirt">T-shirt</option><option value="approval">{t('approvalDeck')}</option></>;
 }
 
 function VotingStage({ snapshot, story, t, onError }: { snapshot: RoomSnapshot; story: StoryView; t: TFunction; onError: (reason: unknown) => void }) {

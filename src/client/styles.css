@@ -307,11 +307,6 @@
   .story-title-field i { position: absolute; left: 16px; top: 50%; z-index: 2; color: var(--accent); font-style: normal; transform: translateY(-50%); }
   .story-title-field input { padding-left: 45px; }
   .story-options { max-width: 620px; grid-template-columns: minmax(190px, 1fr) minmax(190px, 1fr); align-items: end; }
-  .room-deck-reminder { min-height: 49px; display: flex; flex-direction: column; justify-content: center; gap: 4px; margin: 0; padding: 9px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-deep); }
-  .room-deck-reminder span { color: var(--muted); font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
-  .room-deck-reminder strong { font-size: .78rem; }
-  .compact-select select:disabled { cursor: not-allowed; opacity: .56; }
-
   .voting-stage, .results-stage { position: relative; min-height: 0; padding: 16px 20px 14px; }
   .voting-heading, .results-heading { align-items: center; margin-bottom: 0; }.voting-heading h2, .results-heading h2 { margin-bottom: 3px; font-size: 1.55rem; }
   .poker-table-shell { position: relative; width: 100%; height: 340px; margin: 0 auto 6px; isolation: isolate; }

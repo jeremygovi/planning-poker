@@ -4,6 +4,8 @@ Poker Express est un planning poker temps réel, auto-hébergé et ferroviaire. 
 
 L’application propose un thème clair et bleu par défaut — **Table Agile** — ainsi que trois univers originaux : **Train du Sprint**, **Quai 8** et **Turbo TGV**. Tous les visuels sont originaux, sans logo ni personnage propriétaire. L’interface est responsive, bilingue français/anglais, utilisable au clavier et respecte `prefers-reduced-motion`.
 
+![Aperçu d’une salle Poker Express avec quatre participants](./docs/poker-express-preview.png)
+
 ## Démarrage rapide
 
 Il faut uniquement Docker avec Docker Compose, et éventuellement `make`. **Aucune installation de Node.js ou commande npm sur l’hôte n’est nécessaire.**
