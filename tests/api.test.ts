@@ -7,12 +7,11 @@ import { buildApp } from '../src/server/app.js';
 import { loadConfig } from '../src/server/config.js';
 import type { JoinRoomResponse, RoomSnapshot, RoomSummary } from '../src/shared/types.js';
 
-const ACCESS_TOKEN = 'shared-access-token-long-enough';
 let directory: string;
 let app: FastifyInstance;
 
-async function login(token = ACCESS_TOKEN): Promise<string> {
-  const response = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { token } });
+async function login(): Promise<string> {
+  const response = await app.inject({ method: 'POST', url: '/api/session' });
   expect(response.statusCode).toBe(200);
   return response.headers['set-cookie']!.split(';', 1)[0];
 }
@@ -46,8 +45,7 @@ function config() {
     dataDir: directory,
     databasePath: path.join(directory, 'poker-express.db'),
     migrationsDir: path.resolve('migrations'),
-    publicDir: path.join(directory, 'missing-public'),
-    accessToken: ACCESS_TOKEN
+    publicDir: path.join(directory, 'missing-public')
   });
 }
 
@@ -62,14 +60,12 @@ afterEach(async () => {
 });
 
 describe('Poker Express API', () => {
-  it('expose un healthcheck, protège les routes et authentifie avec un jeton unique', async () => {
+  it('expose un healthcheck, protège les routes et ouvre une session applicative sans secret partagé', async () => {
     expect((await app.inject({ method: 'GET', url: '/health' })).json()).toEqual({ status: 'ok' });
     expect((await app.inject({ method: 'GET', url: '/api/rooms' })).statusCode).toBe(401);
-    const denied = await app.inject({
-      method: 'POST', url: '/api/auth/login', payload: { token: 'incorrect-token-long-enough' }
-    });
-    expect(denied.statusCode).toBe(401);
-    expect(denied.json()).toEqual({ code: 'INVALID_TOKEN' });
+    const cookie = await login();
+    expect((await app.inject({ method: 'GET', url: '/api/session', headers: { cookie } })).json()).toEqual({ authenticated: true });
+    expect((await app.inject({ method: 'POST', url: '/api/auth/login', headers: { cookie }, payload: { token: 'obsolete' } })).statusCode).toBe(404);
   });
 
   it('permet à chaque participant de piloter la salle, quel que soit son rôle', async () => {
@@ -124,18 +120,38 @@ describe('Poker Express API', () => {
       method: 'PATCH', url: `/api/rooms/${room.slug}`, headers: { cookie: creatorCookie }, payload: { theme: 'turbo', soundEnabled: false }
     })).statusCode).toBe(204);
 
-    const invite = await app.inject({
-      method: 'POST', url: `/api/rooms/${room.slug}/invite-token`, headers: { cookie: memberCookie }
-    });
-    expect(invite.statusCode).toBe(200);
-    expect(invite.headers['cache-control']).toBe('no-store');
-    expect(invite.json()).toEqual({ token: ACCESS_TOKEN });
     expect((await app.inject({
       method: 'POST', url: `/api/rooms/${room.slug}/invite-token`, headers: { cookie: creatorCookie }
-    })).statusCode).toBe(200);
+    })).statusCode).toBe(404);
 
     const rooms = (await app.inject({ method: 'GET', url: '/api/rooms', headers: { cookie: creatorCookie } })).json() as RoomSummary[];
     expect(rooms.find((item) => item.id === room.id)?.isMember).toBe(true);
+  });
+
+  it('valide les réactions et limite leur fréquence côté serveur', async () => {
+    const aliceCookie = await login();
+    const bobCookie = await login();
+    const room = await createRoom(aliceCookie, 'Wagon réactions');
+    const alice = await join(aliceCookie, room.slug, 'Alice');
+    const bob = await join(bobCookie, room.slug, 'Bob');
+
+    expect((await app.inject({
+      method: 'POST', url: `/api/rooms/${room.slug}/reactions`, headers: { cookie: aliceCookie },
+      payload: { targetParticipantId: alice.snapshot.me!.id, emoji: '❤️' }
+    })).json()).toEqual({ code: 'REACTION_SELF_TARGET' });
+
+    for (let index = 0; index < 6; index += 1) {
+      expect((await app.inject({
+        method: 'POST', url: `/api/rooms/${room.slug}/reactions`, headers: { cookie: aliceCookie },
+        payload: { targetParticipantId: bob.snapshot.me!.id, emoji: '💩' }
+      })).statusCode).toBe(204);
+    }
+    const limited = await app.inject({
+      method: 'POST', url: `/api/rooms/${room.slug}/reactions`, headers: { cookie: aliceCookie },
+      payload: { targetParticipantId: bob.snapshot.me!.id, emoji: '🍅' }
+    });
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toEqual({ code: 'REACTION_RATE_LIMITED' });
   });
 
   it('accepte un titre libre et ne divulgue pas les votes avant révélation', async () => {

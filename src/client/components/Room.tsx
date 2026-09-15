@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ABSTAIN_VALUE } from '../../shared/decks.js';
-import type { DeckKey, HistoryItem, ParticipationRole, RealtimeEvent, RoomSnapshot, RoomTheme, StoryView, TimerView, UserProfile } from '../../shared/types.js';
+import { REACTION_EMOJIS, type ReactionEmoji } from '../../shared/reactions.js';
+import type { DeckKey, HistoryItem, ParticipantView, ParticipationRole, ReactionView, RealtimeMessage, RoomSnapshot, RoomTheme, StoryView, TimerView, UserProfile } from '../../shared/types.js';
 import { api, ApiClientError, realtimeUrl } from '../api.js';
 import type { Locale, TFunction } from '../i18n.js';
 import { playRoomSound, unlockRoomSounds } from '../sound.js';
@@ -24,11 +25,14 @@ export function Room({
   const [error, setError] = useState('');
   const [connectionLost, setConnectionLost] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
+  const [reactions, setReactions] = useState<ReactionView[]>([]);
+  const [reactionAnnouncement, setReactionAnnouncement] = useState('');
   const messageFor = useErrorMessage(t);
   const handleError = useCallback((reason: unknown) => setError(messageFor(reason)), [messageFor]);
   const joined = Boolean(snapshot?.me);
   const celebrationTimer = useRef<number | null>(null);
   const snapshotRef = useRef<RoomSnapshot | null>(null);
+  const reactionTimers = useRef(new Map<string, number>());
 
   const load = useCallback(async () => {
     try {
@@ -66,6 +70,10 @@ export function Room({
     if (snapshot) document.documentElement.dataset.theme = snapshot.room.theme;
   }, [snapshot]);
 
+  useEffect(() => () => {
+    for (const timer of reactionTimers.current.values()) window.clearTimeout(timer);
+  }, []);
+
   useEffect(() => {
     if (!joined) return;
     let closed = false;
@@ -75,7 +83,21 @@ export function Room({
       socket = new WebSocket(realtimeUrl(slug));
       socket.addEventListener('open', () => setConnectionLost(false));
       socket.addEventListener('message', (message) => {
-        const event = JSON.parse(String(message.data)) as RealtimeEvent;
+        const event = JSON.parse(String(message.data)) as RealtimeMessage;
+        if (event.type === 'reaction.sent') {
+          const reaction = event.payload;
+          setReactions((current) => [...current.filter((item) => item.id !== reaction.id), reaction]);
+          const currentSnapshot = snapshotRef.current;
+          const from = currentSnapshot?.participants.find((participant) => participant.id === reaction.fromParticipantId)?.displayName ?? '';
+          const target = currentSnapshot?.participants.find((participant) => participant.id === reaction.targetParticipantId)?.displayName ?? '';
+          setReactionAnnouncement(t('reactionAnnouncement', { from, target, emoji: reaction.emoji }));
+          const timer = window.setTimeout(() => {
+            setReactions((current) => current.filter((item) => item.id !== reaction.id));
+            reactionTimers.current.delete(reaction.id);
+          }, 2_400);
+          reactionTimers.current.set(reaction.id, timer);
+          return;
+        }
         const previous = snapshotRef.current;
         snapshotRef.current = event.payload;
         setSnapshot(event.payload);
@@ -109,7 +131,12 @@ export function Room({
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       socket?.close();
     };
-  }, [joined, slug]);
+  }, [joined, slug, t]);
+
+  const sendReaction = useCallback(async (targetParticipantId: string, emoji: ReactionEmoji) => {
+    try { await api.react(slug, targetParticipantId, emoji); }
+    catch (reason) { handleError(reason); }
+  }, [handleError, slug]);
 
   if (!snapshot) return <main className="loading-screen"><TrainArt variant="empty" /><p>{error || t('loading')}</p></main>;
   if (!snapshot.me) return <JoinRoom snapshot={snapshot} profile={profile} t={t} onEditProfile={onEditProfile} onJoin={async (role) => {
@@ -126,6 +153,7 @@ export function Room({
   return (
     <main className="room-page">
       {connectionLost && <div className="connection-banner" role="status">{t('connectionLost')}</div>}
+      <p className="sr-only" aria-live="polite">{reactionAnnouncement}</p>
       {celebrating && <Celebration theme={snapshot.room.theme} t={t} />}
       <section className="room-toolbar page">
         <button className="back-link" type="button" onClick={() => navigate('/')}><span>←</span>{t('backLobby')}</button>
@@ -134,8 +162,7 @@ export function Room({
           <button className="button button-ghost compact" type="button" onClick={async (event) => {
             const button = event.currentTarget;
             try {
-              const { token } = await api.inviteToken(slug);
-              const invitation = `${window.location.origin}/rooms/${encodeURIComponent(slug)}#token=${encodeURIComponent(token)}`;
+              const invitation = `${window.location.origin}/rooms/${encodeURIComponent(slug)}`;
               await navigator.clipboard.writeText(invitation);
               const old = button.textContent;
               button.textContent = t('copied');
@@ -186,10 +213,12 @@ export function Room({
             t={t}
             onSnapshot={(next) => { snapshotRef.current = next; setSnapshot(next); }}
             onError={handleError}
+            reactions={reactions}
+            onReact={sendReaction}
           />
         </div>
         <aside className="room-side-column">
-          {!snapshot.story && <Participants snapshot={snapshot} t={t} />}
+          {!snapshot.story && <Participants snapshot={snapshot} reactions={reactions} onReact={sendReaction} t={t} />}
           <History items={snapshot.history} roomTheme={snapshot.room.theme} t={t} locale={locale} />
           {!snapshot.story && <button className="archive-button" type="button" onClick={async () => {
             if (!window.confirm(t('archiveConfirm'))) return;
@@ -233,11 +262,13 @@ function JoinRoom({ snapshot, profile, t, onEditProfile, onJoin, error, navigate
   );
 }
 
-function StoryArea({ snapshot, t, onSnapshot, onError }: {
+function StoryArea({ snapshot, t, onSnapshot, onError, reactions, onReact }: {
   snapshot: RoomSnapshot;
   t: TFunction;
   onSnapshot: (snapshot: RoomSnapshot) => void;
   onError: (reason: unknown) => void;
+  reactions: ReactionView[];
+  onReact: (targetParticipantId: string, emoji: ReactionEmoji) => void;
 }) {
   const story = snapshot.story;
   if (!story) return <StartStory snapshot={snapshot} t={t} onSnapshot={onSnapshot} onError={onError} />;
@@ -251,9 +282,9 @@ function StoryArea({ snapshot, t, onSnapshot, onError }: {
         {story.timer && <Timer slug={snapshot.room.slug} timer={story.timer} soundEnabled={snapshot.room.soundEnabled} theme={snapshot.room.theme} t={t} onError={onError} />}
       </article>
       {story.status === 'voting' ? (
-        <VotingStage snapshot={snapshot} story={story} t={t} onError={onError} />
+        <VotingStage snapshot={snapshot} story={story} reactions={reactions} onReact={onReact} t={t} onError={onError} />
       ) : (
-        <ResultsStage snapshot={snapshot} story={story} t={t} onError={onError} />
+        <ResultsStage snapshot={snapshot} story={story} reactions={reactions} onReact={onReact} t={t} onError={onError} />
       )}
     </>
   );
@@ -291,7 +322,7 @@ function DeckOptions({ t }: { t: TFunction }) {
   return <><option value="scrum">Scrum</option><option value="fibonacci">Fibonacci</option><option value="powers">1 · 2 · 4 · 8</option><option value="tshirt">T-shirt</option><option value="approval">{t('approvalDeck')}</option></>;
 }
 
-function VotingStage({ snapshot, story, t, onError }: { snapshot: RoomSnapshot; story: StoryView; t: TFunction; onError: (reason: unknown) => void }) {
+function VotingStage({ snapshot, story, reactions, onReact, t, onError }: { snapshot: RoomSnapshot; story: StoryView; reactions: ReactionView[]; onReact: (targetParticipantId: string, emoji: ReactionEmoji) => void; t: TFunction; onError: (reason: unknown) => void }) {
   const canVote = snapshot.me?.role === 'voter';
   const anyVote = snapshot.participants.some((participant) => participant.hasVoted);
   const onlineVoters = snapshot.participants.filter((participant) => participant.role === 'voter' && participant.online);
@@ -321,7 +352,7 @@ function VotingStage({ snapshot, story, t, onError }: { snapshot: RoomSnapshot; 
     <section className="voting-stage stage-card">
       <div className="voting-heading"><div><h2>{t('participantsTitle')}</h2><p>{t('chooseCardCopy')}</p></div><span className="privacy-badge">● {snapshot.participants.filter((participant) => participant.hasVoted).length}/{snapshot.participants.filter((participant) => participant.role === 'voter').length}</span></div>
       {autoRevealCountdown !== null && <div className="auto-reveal-countdown" role="status"><span>{t('autoRevealCountdown')}</span><strong>{autoRevealCountdown}</strong><i /></div>}
-      <PokerTable snapshot={snapshot} story={story} revealed={false} t={t} />
+      <PokerTable snapshot={snapshot} story={story} revealed={false} reactions={reactions} onReact={onReact} t={t} />
       <div className="estimate-dock">
         <div className="estimate-dock-heading"><h3>{canVote ? t('chooseCard') : t('observerBadge')}</h3>{canVote && snapshot.ownVote && <p className="vote-confirmation">✓ {t('waitingReveal')}</p>}</div>
         {canVote ? <div className="estimate-deck" role="radiogroup" aria-label={t('ariaDeck')}>
@@ -343,7 +374,7 @@ function VotingStage({ snapshot, story, t, onError }: { snapshot: RoomSnapshot; 
   );
 }
 
-function PokerTable({ snapshot, story, revealed, t }: { snapshot: RoomSnapshot; story: StoryView; revealed: boolean; t: TFunction }) {
+function PokerTable({ snapshot, story, revealed, reactions, onReact, t }: { snapshot: RoomSnapshot; story: StoryView; revealed: boolean; reactions: ReactionView[]; onReact: (targetParticipantId: string, emoji: ReactionEmoji) => void; t: TFunction }) {
   const votes = new Map((story.revealedVotes ?? []).map((vote) => [vote.participantId, vote]));
   const voters = snapshot.participants.filter((participant) => participant.role === 'voter').length;
   const played = snapshot.participants.filter((participant) => participant.hasVoted).length;
@@ -378,7 +409,7 @@ function PokerTable({ snapshot, story, revealed, t }: { snapshot: RoomSnapshot; 
             <div className={`table-vote-card ${participant.hasVoted ? 'voted' : ''} ${isRevealed ? 'is-revealed' : ''} ${vote?.isAbstention ? 'neutral' : ''}`} aria-label={`${participant.displayName} — ${status}`}>
               <span className="card-inner"><span className="card-back">{participant.role === 'observer' ? t('observerCard') : participant.hasVoted ? '✓' : '?'}</span><span className={`card-front ${approvalVote ? `approval-result approval-${approvalVote}` : ''}`}>{cardFrontValue}</span></span>
             </div>
-            <div className="seat-profile"><Avatar avatar={participant.avatar} avatarImage={participant.avatarImage} size="large" /><span><strong>{participant.displayName}</strong><small>{status}</small></span></div>
+            <div className="seat-profile"><ReactionTarget participant={participant} meId={snapshot.me?.id ?? null} reactions={reactions} onReact={onReact} size="large" t={t} /><span><strong>{participant.displayName}</strong><small>{status}</small></span></div>
           </article>
         );
       })}
@@ -386,12 +417,12 @@ function PokerTable({ snapshot, story, revealed, t }: { snapshot: RoomSnapshot; 
   );
 }
 
-function ResultsStage({ snapshot, story, t, onError }: { snapshot: RoomSnapshot; story: StoryView; t: TFunction; onError: (reason: unknown) => void }) {
+function ResultsStage({ snapshot, story, reactions, onReact, t, onError }: { snapshot: RoomSnapshot; story: StoryView; reactions: ReactionView[]; onReact: (targetParticipantId: string, emoji: ReactionEmoji) => void; t: TFunction; onError: (reason: unknown) => void }) {
   const [finalValue, setFinalValue] = useState(story.suggestedValue ? voteValueLabel(story.suggestedValue, t) : '');
   return (
     <section className={`results-stage stage-card ${story.unanimous ? 'unanimous' : ''}`}>
       <div className="results-heading"><div><p className="eyebrow">{t('resultTitle')}</p><h2>{story.unanimous ? t('unanimousTitle') : t('resultTitle')}</h2>{story.unanimous && <p>{t('unanimousCopy')}</p>}</div></div>
-      <PokerTable snapshot={snapshot} story={story} revealed t={t} />
+      <PokerTable snapshot={snapshot} story={story} revealed reactions={reactions} onReact={onReact} t={t} />
       <form className="finalize-form" onSubmit={async (event) => { event.preventDefault(); try { await api.finalize(snapshot.room.slug, finalValue); } catch (reason) { onError(reason); } }}>
         <label>{t('finalValue')}<input value={finalValue} onChange={(event) => setFinalValue(event.target.value)} placeholder={t('finalValuePlaceholder')} maxLength={32} required /></label>
         <button className="button button-primary button-large" type="submit">{t('validate')} →</button>
@@ -400,11 +431,36 @@ function ResultsStage({ snapshot, story, t, onError }: { snapshot: RoomSnapshot;
   );
 }
 
-function Participants({ snapshot, t }: { snapshot: RoomSnapshot; t: TFunction }) {
+function Participants({ snapshot, reactions, onReact, t }: { snapshot: RoomSnapshot; reactions: ReactionView[]; onReact: (targetParticipantId: string, emoji: ReactionEmoji) => void; t: TFunction }) {
   return (
     <section className="side-card participants-card"><div className="side-card-heading"><div><p className="eyebrow">{t('participantsTitle')}</p><h2>{t('participantsTitle')}</h2></div><span className="count-badge">{snapshot.participants.length}</span></div>
-      <div className="participant-list">{snapshot.participants.length ? snapshot.participants.map((participant) => <div className={`participant-row ${participant.online ? '' : 'offline'} ${participant.role === 'observer' ? 'is-observer' : ''}`} key={participant.id}><Avatar avatar={participant.avatar} avatarImage={participant.avatarImage} /><span className="participant-name"><strong>{participant.displayName}{participant.id === snapshot.me?.id && <em>YOU</em>}</strong><small>{participant.role === 'observer' ? t('observerBadge') : participant.hasVoted ? t('voted') : t('thinking')}</small></span><i className={participant.hasVoted ? 'vote-ready' : ''}>{participant.role === 'observer' ? t('observerCard') : participant.hasVoted ? '✓' : '…'}</i></div>) : <p className="muted">{t('noParticipants')}</p>}</div>
+      <div className="participant-list">{snapshot.participants.length ? snapshot.participants.map((participant) => <div className={`participant-row ${participant.online ? '' : 'offline'} ${participant.role === 'observer' ? 'is-observer' : ''}`} key={participant.id}><ReactionTarget participant={participant} meId={snapshot.me?.id ?? null} reactions={reactions} onReact={onReact} t={t} /><span className="participant-name"><strong>{participant.displayName}{participant.id === snapshot.me?.id && <em>YOU</em>}</strong><small>{participant.role === 'observer' ? t('observerBadge') : participant.hasVoted ? t('voted') : t('thinking')}</small></span><i className={participant.hasVoted ? 'vote-ready' : ''}>{participant.role === 'observer' ? t('observerCard') : participant.hasVoted ? '✓' : '…'}</i></div>) : <p className="muted">{t('noParticipants')}</p>}</div>
     </section>
+  );
+}
+
+function ReactionTarget({ participant, meId, reactions, onReact, size = 'medium', t }: {
+  participant: ParticipantView;
+  meId: string | null;
+  reactions: ReactionView[];
+  onReact: (targetParticipantId: string, emoji: ReactionEmoji) => void;
+  size?: 'medium' | 'large';
+  t: TFunction;
+}) {
+  const [open, setOpen] = useState(false);
+  const canReact = participant.id !== meId && participant.online;
+  const visibleReactions = reactions.filter((reaction) => reaction.targetParticipantId === participant.id);
+  return (
+    <span className="reaction-target" onBlur={(event) => {
+      if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+    }}>
+      {canReact ? <button className="reaction-avatar-button" type="button" aria-label={t('reactTo', { name: participant.displayName })} aria-expanded={open} onClick={() => setOpen((value) => !value)}><Avatar avatar={participant.avatar} avatarImage={participant.avatarImage} size={size} /></button>
+        : <Avatar avatar={participant.avatar} avatarImage={participant.avatarImage} size={size} />}
+      {open && <span className="reaction-picker" role="menu" aria-label={t('chooseReaction')}>
+        {REACTION_EMOJIS.map((emoji) => <button key={emoji} type="button" role="menuitem" aria-label={t('sendReaction', { emoji, name: participant.displayName })} onClick={() => { onReact(participant.id, emoji); setOpen(false); }}>{emoji}</button>)}
+      </span>}
+      <span className="reaction-burst" aria-hidden="true">{visibleReactions.map((reaction, index) => <i key={reaction.id} style={{ '--reaction-offset': `${(index - 2) * 7}px` } as React.CSSProperties}>{reaction.emoji}</i>)}</span>
+    </span>
   );
 }
 

@@ -19,8 +19,7 @@ beforeEach(async () => {
     dataDir: directory,
     databasePath: path.join(directory, 'poker-express.db'),
     migrationsDir: path.resolve('migrations'),
-    publicDir,
-    accessToken: 'shared-access-token-long-enough'
+    publicDir
   }));
 });
 

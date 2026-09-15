@@ -1,7 +1,5 @@
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { LoginBodySchema } from '../shared/schemas.js';
-import type { Config } from './config.js';
 import { AppError } from './errors.js';
 
 export interface AuthSession {
@@ -18,19 +16,6 @@ declare module 'fastify' {
 
 const COOKIE_NAME = 'poker_express_session';
 const SESSION_DURATION_SECONDS = 7 * 24 * 60 * 60;
-const LOGIN_WINDOW_MS = 60_000;
-const MAX_LOGIN_FAILURES = 10;
-
-interface Attempt {
-  failures: number;
-  resetAt: number;
-}
-
-function tokenMatches(candidate: string, expected: string): boolean {
-  const candidateHash = createHash('sha256').update(candidate).digest();
-  const expectedHash = createHash('sha256').update(expected).digest();
-  return timingSafeEqual(candidateHash, expectedHash);
-}
 
 function cookieValue(header: string | undefined, name: string): string | undefined {
   if (!header) return undefined;
@@ -76,54 +61,34 @@ export interface AuthManager {
 
 export function registerAuth(
   app: FastifyInstance,
-  config: Config,
   onSessionRemoved: (token: string) => void
 ): AuthManager {
   const sessions = new Map<string, AuthSession>();
-  const attempts = new Map<string, Attempt>();
 
   app.decorateRequest('authSession', null);
   app.decorateRequest('sessionToken', null);
 
-  app.post<{ Body: { token: string } }>(
-    '/api/auth/login',
-    { schema: { body: LoginBodySchema } },
-    async (request, reply) => {
-      const now = Date.now();
-      const current = attempts.get(request.ip);
-      const attempt = current && current.resetAt > now ? current : { failures: 0, resetAt: now + LOGIN_WINDOW_MS };
-      if (attempt.failures >= MAX_LOGIN_FAILURES) {
-        return reply
-          .header('Retry-After', Math.max(1, Math.ceil((attempt.resetAt - now) / 1000)))
-          .code(429)
-          .send({ code: 'TOO_MANY_ATTEMPTS' });
+  app.post('/api/session', async (_request, reply) => {
+    const now = Date.now();
+    for (const [token, session] of sessions) {
+      if (session.expiresAt <= now) {
+        sessions.delete(token);
+        onSessionRemoved(token);
       }
-      if (!tokenMatches(request.body.token, config.accessToken)) {
-        attempt.failures += 1;
-        attempts.set(request.ip, attempt);
-        throw new AppError('INVALID_TOKEN', 401);
-      }
-      attempts.delete(request.ip);
-      for (const [token, session] of sessions) {
-        if (session.expiresAt <= now) {
-          sessions.delete(token);
-          onSessionRemoved(token);
-        }
-      }
-      const token = randomBytes(32).toString('base64url');
-      sessions.set(token, {
-        expiresAt: now + SESSION_DURATION_SECONDS * 1000,
-        memberships: new Map()
-      });
-      return reply
-        .header('Cache-Control', 'no-store')
-        .header('Set-Cookie', sessionCookie(token, usesHttps(request)))
-        .send({ authenticated: true });
     }
-  );
+    const token = randomBytes(32).toString('base64url');
+    sessions.set(token, {
+      expiresAt: now + SESSION_DURATION_SECONDS * 1000,
+      memberships: new Map()
+    });
+    return reply
+      .header('Cache-Control', 'no-store')
+      .header('Set-Cookie', sessionCookie(token, usesHttps(_request)))
+      .send({ authenticated: true });
+  });
 
   app.addHook('preHandler', async (request) => {
-    if (!request.url.startsWith('/api/') || request.routeOptions.url === '/api/auth/login') return;
+    if (!request.url.startsWith('/api/') || (request.routeOptions.url === '/api/session' && request.method === 'POST')) return;
     const token = cookieValue(request.headers.cookie, COOKIE_NAME);
     const session = token ? sessions.get(token) : undefined;
     if (!session || session.expiresAt <= Date.now()) {
@@ -137,11 +102,11 @@ export function registerAuth(
     request.sessionToken = token ?? null;
   });
 
-  app.get('/api/auth/session', async (request, reply) =>
+  app.get('/api/session', async (_request, reply) =>
     reply.header('Cache-Control', 'no-store').send({ authenticated: true })
   );
 
-  app.post('/api/auth/logout', async (request, reply) => {
+  app.delete('/api/session', async (request, reply) => {
     if (request.sessionToken) {
       sessions.delete(request.sessionToken);
       onSessionRemoved(request.sessionToken);

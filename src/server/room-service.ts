@@ -200,6 +200,11 @@ export class RoomService {
     if (!this.isRoomParticipant(room.id, participantId)) throw new AppError('JOIN_REQUIRED', 403);
   }
 
+  assertReactionTarget(slug: string, participantId: string): void {
+    const room = this.roomBySlug(slug);
+    if (!this.isRoomParticipant(room.id, participantId)) throw new AppError('REACTION_TARGET_NOT_FOUND', 404);
+  }
+
   createRoom(input: { name: unknown; theme?: unknown; defaultDeckKey?: unknown }): RoomSummary {
     const name = cleanText(input.name, 80, 'INVALID_ROOM_NAME');
     const theme = input.theme === undefined ? 'classic' : input.theme;

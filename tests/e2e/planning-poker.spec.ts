@@ -1,7 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 
-const accessToken = 'access-token-for-e2e-32-chars';
-
 async function frenchContext(browser: Browser): Promise<BrowserContext> {
   return browser.newContext({ locale: 'fr-FR', permissions: ['clipboard-read', 'clipboard-write'] });
 }
@@ -13,7 +11,6 @@ async function setupProfile(page: Page, name: string, avatarKey: string): Promis
 }
 
 async function login(page: Page, name: string, avatarKey: string): Promise<void> {
-  await page.getByLabel('Jeton d’accès').fill(accessToken);
   await page.getByRole('button', { name: 'Entrer en gare' }).click();
   await setupProfile(page, name, avatarKey);
 }
@@ -67,15 +64,13 @@ test('tous les participants pilotent les manches tandis que seuls les votants po
     const invitationUrl = await camille.evaluate(() => navigator.clipboard.readText());
     const invitation = new URL(invitationUrl);
     expect(invitation.pathname).toBe(roomPath);
-    expect(new URLSearchParams(invitation.hash.slice(1)).get('token')).toBe(accessToken);
+    expect(invitation.hash).toBe('');
 
     const aliceContext = await frenchContext(browser);
     contexts.push(aliceContext);
     const alice = await aliceContext.newPage();
     await alice.goto(invitationUrl);
-    await expect(alice.getByLabel('Prénom ou pseudo')).toBeVisible();
-    expect(new URL(alice.url()).hash).toBe('');
-    await setupProfile(alice, 'Alice', 'rocket');
+    await login(alice, 'Alice', 'rocket');
     await join(alice, 'voter');
     await expect(alice.getByRole('button', { name: /Copier le lien/ })).toBeVisible();
 
@@ -83,14 +78,14 @@ test('tous les participants pilotent les manches tandis que seuls les votants po
     contexts.push(bobContext);
     const bob = await bobContext.newPage();
     await bob.goto(invitationUrl);
-    await setupProfile(bob, 'Bob', 'robot');
+    await login(bob, 'Bob', 'robot');
     await join(bob, 'voter');
 
     const observerContext = await frenchContext(browser);
     contexts.push(observerContext);
     const observer = await observerContext.newPage();
     await observer.goto(invitationUrl);
-    await setupProfile(observer, 'Noa', 'pirate');
+    await login(observer, 'Noa', 'pirate');
     await join(observer, 'observer');
 
     await alice.getByRole('button', { name: 'Modifier mon profil' }).click();
@@ -103,6 +98,11 @@ test('tous les participants pilotent les manches tandis que seuls les votants po
     const aliciaRow = observer.locator('.participant-row').filter({ hasText: 'Alicia' });
     await expect(aliciaRow).toBeVisible();
     await expect(aliciaRow.locator('.avatar-custom img')).toBeVisible();
+
+    await observer.getByRole('button', { name: 'Réagir à Alicia' }).click();
+    await observer.getByRole('menuitem', { name: 'Envoyer 🍅 à Alicia' }).click();
+    await expect(alice.locator('.participant-row').filter({ hasText: 'Alicia' }).locator('.reaction-burst')).toContainText('🍅');
+    await expect(alice.getByRole('button', { name: 'Réagir à Alicia' })).toHaveCount(0);
 
     await alice.locator('.start-story').getByLabel('Jeu de cartes').selectOption('scrum');
     await expect(alice.locator('.room-toolbar').getByLabel('Jeu de cartes')).toHaveValue('scrum');

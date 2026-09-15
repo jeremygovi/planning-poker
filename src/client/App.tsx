@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SessionView, UserProfile } from '../shared/types.js';
-import { api, ApiClientError } from './api.js';
+import { api } from './api.js';
 import { Avatar } from './components/Avatar.js';
 import { Lobby } from './components/Lobby.js';
 import { ProfileDialog } from './components/ProfileDialog.js';
@@ -22,8 +22,9 @@ export function App() {
   const [profile, setProfile] = useState<UserProfile | null>(readStoredProfile);
   const [editingProfile, setEditingProfile] = useState(false);
   const [path, setPath] = useState(currentPath);
-  const [initialInviteToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('token'));
+  const chipRainKey = useKonamiCode();
   const t = useCallback<TFunction>((key, values) => translate(locale, key, values), [locale]);
+  const chipRain = chipRainKey !== null ? <ChipRain key={chipRainKey} t={t} /> : null;
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -31,13 +32,8 @@ export function App() {
   }, [locale]);
 
   useEffect(() => {
-    if (initialInviteToken) {
-      window.history.replaceState({}, '', `${window.location.pathname}${window.location.search}`);
-      api.login(initialInviteToken).then(setSession).catch(() => setSession(null));
-      return;
-    }
     api.session().then(setSession).catch(() => setSession(null));
-  }, [initialInviteToken]);
+  }, []);
 
   useEffect(() => {
     const onPopState = () => setPath(currentPath());
@@ -53,8 +49,8 @@ export function App() {
 
   const changeLocale = (next: Locale) => setLocale(next);
 
-  if (session === undefined) return <Loading t={t} />;
-  if (!session) return <Login t={t} locale={locale} setLocale={changeLocale} onLogin={setSession} />;
+  if (session === undefined) return <><Loading t={t} />{chipRain}</>;
+  if (!session) return <><Login t={t} locale={locale} setLocale={changeLocale} onLogin={setSession} />{chipRain}</>;
 
   const saveProfile = async (nextProfile: UserProfile) => {
     await Promise.all(storedMemberships().map(async ({ key, slug, token }) => {
@@ -68,7 +64,7 @@ export function App() {
   };
 
   if (!profile) {
-    return <div className="app-shell"><ProfileDialog initial={null} required t={t} onSave={saveProfile} /></div>;
+    return <><div className="app-shell"><ProfileDialog initial={null} required t={t} onSave={saveProfile} /></div>{chipRain}</>;
   }
 
   const roomMatch = path.match(/^\/rooms\/([^/]+)$/);
@@ -98,6 +94,7 @@ export function App() {
         <Lobby profile={profile} t={t} navigate={navigate} />
       )}
       {editingProfile && <ProfileDialog initial={profile} t={t} onSave={saveProfile} onClose={() => setEditingProfile(false)} />}
+      {chipRain}
     </div>
   );
 }
@@ -141,7 +138,6 @@ function Login({
   setLocale: (locale: Locale) => void;
   onLogin: (session: SessionView) => void;
 }) {
-  const [token, setToken] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => { document.documentElement.dataset.theme = 'classic'; }, []);
@@ -160,13 +156,12 @@ function Login({
           <p>{t('loginCopy')}</p>
           <form onSubmit={async (event) => {
             event.preventDefault(); setBusy(true); setError('');
-            try { onLogin(await api.login(token)); }
-            catch (reason) { setError(t(errorTranslationKey(reason instanceof ApiClientError ? reason.code : ''))); }
+            try { onLogin(await api.startSession()); }
+            catch { setError(t(errorTranslationKey(''))); }
             finally { setBusy(false); }
           }}>
-            <label>{t('accessToken')}<input type="password" autoFocus autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} minLength={16} required /></label>
             {error && <p className="form-error" role="alert">{error}</p>}
-            <button className="button button-primary button-large" disabled={busy} type="submit">{t('login')}<span aria-hidden="true">→</span></button>
+            <button className="button button-primary button-large" autoFocus disabled={busy} type="submit">{t('login')}<span aria-hidden="true">→</span></button>
           </form>
         </div>
         <div className="login-train-stage">
@@ -196,4 +191,44 @@ function BrandMark() {
 
 function Loading({ t }: { t: TFunction }) {
   return <main className="loading-screen"><TrainArt variant="empty" /><p>{t('loading')}</p></main>;
+}
+
+function useKonamiCode(): number | null {
+  const [activation, setActivation] = useState<number | null>(null);
+  const timer = useRef<number | null>(null);
+  useEffect(() => {
+    const sequence = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+    let index = 0;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
+      if (key === sequence[index]) index += 1;
+      else index = key === sequence[0] ? 1 : 0;
+      if (index !== sequence.length) return;
+      index = 0;
+      if (timer.current) window.clearTimeout(timer.current);
+      setActivation(Date.now());
+      timer.current = window.setTimeout(() => setActivation(null), 4_500);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      if (timer.current) window.clearTimeout(timer.current);
+    };
+  }, []);
+  return activation;
+}
+
+function ChipRain({ t }: { t: TFunction }) {
+  const labels = ['1', '2', '3', '5', '8', '13', '21', '?', '☕', '★'];
+  return (
+    <div className="chip-rain" aria-hidden="true">
+      <span className="chip-rain-message">{t('konamiActivated')}</span>
+      {Array.from({ length: 42 }, (_, index) => <i key={index} style={{
+        '--chip-left': `${(index * 37) % 101}%`,
+        '--chip-delay': `${-(index % 12) * .21}s`,
+        '--chip-duration': `${2.7 + (index % 6) * .16}s`,
+        '--chip-drift': `${((index * 23) % 140) - 70}px`
+      } as React.CSSProperties}>{labels[index % labels.length]}</i>)}
+    </div>
+  );
 }

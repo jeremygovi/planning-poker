@@ -102,6 +102,13 @@ export interface JoinRoomResponse {
   rejoinToken: string;
 }
 
+export interface ReactionView {
+  id: string;
+  emoji: import('./reactions.js').ReactionEmoji;
+  fromParticipantId: string;
+  targetParticipantId: string;
+}
+
 export type RealtimeEventType =
   | 'room.snapshot'
   | 'presence.changed'
@@ -117,6 +124,14 @@ export interface RealtimeEvent {
   payload: RoomSnapshot;
   occurredAt: string;
 }
+
+export interface ReactionRealtimeEvent {
+  type: 'reaction.sent';
+  payload: ReactionView;
+  occurredAt: string;
+}
+
+export type RealtimeMessage = RealtimeEvent | ReactionRealtimeEvent;
 
 export interface ApiErrorBody {
   code: string;

@@ -118,7 +118,7 @@ Preserve the existing security model:
 - restrictive CSP and security headers
 - bounded HTTP and WebSocket payloads
 
-Never log, expose, or commit `ACCESS_TOKEN`, session tokens, rejoin tokens, `.env`, database files, backups, or user-provided avatar data.
+Never log, expose, or commit session tokens, rejoin tokens, tunnel credentials, `.env`, database files, backups, or user-provided avatar data.
 
 ## Generated and local files
 

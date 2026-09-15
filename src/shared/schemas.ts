@@ -11,8 +11,6 @@ const AvatarImageSchema = Type.Union([
   Type.Null()
 ]);
 
-export const LoginBodySchema = Type.Object({ token: Type.String({ minLength: 16, maxLength: 128 }) }, { additionalProperties: false });
-
 export const CreateRoomBodySchema = Type.Object({
   name: Type.String({ minLength: 1, maxLength: 80 }),
   theme: Type.Optional(Type.Union([Type.Literal('classic'), Type.Literal('train'), Type.Literal('station'), Type.Literal('turbo')])),
@@ -49,6 +47,15 @@ export const ProfileBodySchema = Type.Object({
 }, { additionalProperties: false });
 
 export const RejoinRoomBodySchema = Type.Object({ token: Type.String({ minLength: 32, maxLength: 128 }) }, { additionalProperties: false });
+
+export const ReactionBodySchema = Type.Object({
+  targetParticipantId: Type.String({ minLength: 1, maxLength: 64 }),
+  emoji: Type.Union([
+    Type.Literal('❤️'), Type.Literal('💩'), Type.Literal('👍'), Type.Literal('👎'),
+    Type.Literal('🍅'), Type.Literal('😘'), Type.Literal('🤡'), Type.Literal('🔥'),
+    Type.Literal('🥳'), Type.Literal('🤮'), Type.Literal('🖕'), Type.Literal('🚂')
+  ])
+}, { additionalProperties: false });
 
 export const StartStoryBodySchema = Type.Object({
   title: Type.String({ minLength: 1, maxLength: 2048 }),

@@ -28,7 +28,6 @@ export default defineConfig({
       DATA_DIR: '/tmp/poker-express-e2e',
       MIGRATIONS_DIR: '/app/migrations',
       PUBLIC_DIR: '/app/dist/client',
-      ACCESS_TOKEN: 'access-token-for-e2e-32-chars'
     }
   },
   projects: [

@@ -16,10 +16,9 @@ Il faut uniquement Docker avec Docker Compose, et éventuellement `make`. **Aucu
    cp .env.sample .env
    ```
 
-2. Remplacez le jeton d’exemple par un secret aléatoire d’au moins 16 caractères (32 ou plus recommandés) :
+2. Ajustez éventuellement le port local :
 
    ```dotenv
-   ACCESS_TOKEN=un-jeton-equipe-aleatoire-de-32-caracteres
    PORT=3000
    ```
 
@@ -31,9 +30,9 @@ Il faut uniquement Docker avec Docker Compose, et éventuellement `make`. **Aucu
 
 4. Ouvrez <http://127.0.0.1:3000>.
 
-Sans jeton dans l’URL, l’application le demande à l’arrivée. Toute personne authentifiée peut créer une salle. Chaque personne configure ensuite une seule fois son profil dans son navigateur : nom, avatar illustré ou photo personnelle. Ce profil est réutilisé dans toutes les salles et reste modifiable depuis l’en-tête.
+L’écran « Montez à bord » ouvre une session locale dans le navigateur, puis chaque personne configure une seule fois son profil : nom, avatar illustré ou photo personnelle. Ce profil est réutilisé dans toutes les salles et reste modifiable depuis l’en-tête. Toute personne ayant franchi la couche d’accès placée devant l’application peut créer une salle.
 
-Chaque participant d’une salle peut en modifier les réglages, piloter les manches, la partager, l’archiver et la restaurer. Le rôle choisi à l’entrée sert uniquement à participer au vote ou à observer. L’invitation mène directement à la salle et embarque le jeton dans le fragment `#token=…`, puis l’application l’efface de la barre d’adresse dès qu’il a été consommé. Le navigateur mémorise aussi localement un jeton de reprise propre au participant afin de retrouver son appartenance après un redémarrage du serveur.
+Chaque participant d’une salle peut en modifier les réglages, piloter les manches, la partager, l’archiver et la restaurer. Le rôle choisi à l’entrée sert uniquement à participer au vote ou à observer. L’invitation est l’URL directe de la salle ; Cloudflare Access en contrôle l’ouverture. Le navigateur mémorise aussi localement un jeton de reprise propre au participant afin de retrouver son appartenance après un redémarrage du serveur. Ce jeton de reprise n’accorde aucun accès à l’application et ne quitte pas le navigateur, sauf lors de la reprise de la salle.
 
 ## Commandes Docker
 
@@ -61,6 +60,8 @@ Les équivalents `docker compose` sont visibles dans le [Makefile](./Makefile). 
 Une salle contient au plus une user story active. N’importe quel participant peut choisir pour la salle le jeu Fibonacci, Scrum, puissances de deux ou T-shirt ; ce réglage persiste entre les estimations et reste modifiable lorsqu’aucune manche n’est en cours. Pour lancer une manche, il suffit de saisir un titre libre. Si ce titre contient une URL HTTP(S), l’application la détecte et la rend cliquable.
 
 Les participants et leurs cartes restent visibles autour d’une table de poker pendant tout le vote. Une carte grise passe au vert dès qu’un votant a choisi ; au reveal, les mêmes cartes se retournent pour afficher uniquement leur valeur. Les spectateurs ne sont ni comptés parmi les votants, ni autorisés à poser une carte, et leur emplacement porte explicitement la mention `SPEC.`. Avant la révélation, le serveur ne diffuse que l’état « a voté » — jamais la valeur.
+
+Un clic sur l’avatar d’un collègue en ligne ouvre une palette de réactions. Les emojis sont diffusés en temps réel, restent éphémères et ne sont pas stockés. Le serveur limite leur fréquence pour éviter le spam. Le Konami code classique (`↑ ↑ ↓ ↓ ← → ← → B A`) déclenche une pluie de jetons pendant quelques secondes ; l’animation est neutralisée lorsque le système demande une réduction des mouvements.
 
 Le profil propose douze avatars SVG originaux ou une photo personnelle. La photo est recadrée, redimensionnée et compressée côté navigateur avant d’être partagée dans les salles ; aucun média externe n’est chargé. Lorsque le son global est activé, des signaux Web Audio procéduraux accompagnent la nouvelle story, la pose d’une carte, la révélation, le départ et la fin du minuteur, la décision finale et le consensus.
 
@@ -91,8 +92,8 @@ docker compose up -d
 
 ## Sécurité et exposition
 
-- sessions aléatoires en mémoire, cookies `HttpOnly`, `SameSite=Strict`, durée de sept jours ;
-- un seul `ACCESS_TOKEN` partagé, comparé en temps constant, et limitation des échecs de connexion par IP ;
+- contrôle d’accès Internet délégué à Cloudflare Access ; l’application ne contient volontairement plus de mot de passe ou secret d’équipe ;
+- sessions applicatives aléatoires en mémoire, cookies `HttpOnly`, `SameSite=Strict`, durée de sept jours ;
 - jetons de reprise individuels aléatoires, stockés hachés dans SQLite et conservés dans le navigateur ;
 - attribut `Secure` automatiquement ajouté lorsque Fastify voit HTTPS ou `X-Forwarded-Proto: https` ;
 - contrôle d’origine sur les mutations REST et les WebSockets ;
@@ -100,19 +101,25 @@ docker compose up -d
 - processus Node non-root, `no-new-privileges`, `init` et healthcheck ;
 - publication Compose limitée par défaut à `127.0.0.1`.
 
-Le lien d’invitation est un lien porteur : toute personne qui le possède peut accéder à l’application. Le fragment `#token` n’est pas envoyé au serveur avec la requête HTTP et évite donc les journaux HTTP ou l’en-tête `Referer`, mais il reste visible dans les presse-papiers et historiques locaux. Partagez-le sur un canal de confiance et renouvelez `ACCESS_TOKEN` s’il a fuité. Pour une exposition Internet, ajoutez une couche d’accès comme Cloudflare Access.
+Poker Express n’authentifie pas lui-même les identités. Une exposition directe sur Internet rendrait donc l’application publique. En production, le hostname complet doit être couvert par Cloudflare Access et l’origine ne doit pas rester joignable en contournant le tunnel. Les sessions applicatives servent uniquement à associer un navigateur à ses participants.
 
 Pour une origine publique fixe, ajoutez par exemple `PUBLIC_ORIGIN=https://poker.example.com` dans `.env`. Elle doit correspondre exactement à l’origine vue par le navigateur.
 
 ## Cloudflare Tunnel et Access
 
-Le projet n’embarque ni `cloudflared`, ni token. Un tunnel ponctuel peut être lancé dans un conteneur séparé, sur un réseau capable d’atteindre Poker Express :
+Le déploiement Internet attendu utilise un tunnel nommé et Cloudflare Access. Le plan Zero Trust Free convient aux équipes de moins de 50 personnes au moment de la rédaction de cette documentation.
 
-```sh
-docker run --rm --network host cloudflare/cloudflared:latest tunnel --no-autoupdate --url http://127.0.0.1:3000
-```
+1. Dans le tableau de bord Cloudflare, ouvrez **Zero Trust** et activez le plan Free.
+2. Dans **Settings → Authentication → Login methods**, ajoutez **One-time PIN**. Cette méthode envoie un code temporaire à l’adresse saisie et ne demande aucun accès administrateur à Azure AD ou Google Workspace.
+3. Dans **Access controls → Applications**, ajoutez une application **Self-hosted** couvrant le hostname complet de Poker Express, par exemple `poker.example.com`.
+4. Ajoutez une règle **Allow** dont `Include → Emails` contient les adresses exactes des collègues autorisés. Pour une équipe maîtrisée, cette liste est plus restrictive qu’une règle portant sur tout le domaine de messagerie.
+5. Limitez cette règle à la méthode **One-time PIN** et choisissez une durée de session adaptée, par exemple sept jours.
+6. Rattachez le hostname au tunnel vers `http://127.0.0.1:3000` — ou vers le nom du service Docker si `cloudflared` partage son réseau — puis activez **Protect with Access** sur la route lorsqu’elle est disponible. Ne publiez pas en parallèle le port applicatif sur une interface publique.
+7. Définissez `PUBLIC_ORIGIN=https://poker.example.com` dans `.env`, redémarrez l’application, puis testez en navigation privée avec une adresse autorisée et une adresse refusée.
 
-Sur Docker Desktop, remplacez l’URL par `http://host.docker.internal:3000` si le mode réseau hôte n’est pas disponible. Pour un tunnel nommé, créez-le dans le tableau de bord Cloudflare, protégez son hostname avec Cloudflare Access et conservez le token hors du dépôt. Les WebSockets sont pris en charge par Tunnel ; configurez ensuite `PUBLIC_ORIGIN` avec l’URL HTTPS exacte.
+Une règle qui autorise seulement la méthode One-time PIN, sans liste d’emails ou domaine contrôlé, accepterait n’importe quelle adresse valide : elle ne doit pas être utilisée. Si les emails Cloudflare sont filtrés par la messagerie d’entreprise, autorisez l’expéditeur `noreply@notify.cloudflare.com` ou le domaine `notify.cloudflare.com` selon les procédures internes.
+
+Le projet n’embarque pas `cloudflared` et ne stocke pas les identifiants du tunnel. Les WebSockets passent par le même hostname protégé que le reste de l’application.
 
 ## Architecture
 

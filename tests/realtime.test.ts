@@ -6,22 +6,22 @@ import type { FastifyInstance } from 'fastify';
 import WebSocket from 'ws';
 import { buildApp } from '../src/server/app.js';
 import { loadConfig } from '../src/server/config.js';
-import type { RealtimeEvent, RoomSummary } from '../src/shared/types.js';
+import type { ReactionRealtimeEvent, RealtimeEvent, RealtimeEventType, RealtimeMessage, RoomSummary } from '../src/shared/types.js';
 
 let app: FastifyInstance;
 let directory: string;
-const ACCESS_TOKEN = 'shared-realtime-access-token';
-
 async function login(): Promise<string> {
-  const response = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { token: ACCESS_TOKEN } });
+  const response = await app.inject({ method: 'POST', url: '/api/session' });
   return response.headers['set-cookie']!.split(';', 1)[0];
 }
 
-function nextEvent(socket: WebSocket, expectedType?: string): Promise<RealtimeEvent> {
+function nextEvent(socket: WebSocket, expectedType: 'reaction.sent'): Promise<ReactionRealtimeEvent>;
+function nextEvent(socket: WebSocket, expectedType?: RealtimeEventType): Promise<RealtimeEvent>;
+function nextEvent(socket: WebSocket, expectedType?: RealtimeEventType | 'reaction.sent'): Promise<RealtimeMessage> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('WebSocket event timeout')), 3000);
     const listener = (data: WebSocket.RawData) => {
-      const event = JSON.parse(data.toString()) as RealtimeEvent;
+      const event = JSON.parse(data.toString()) as RealtimeMessage;
       if (expectedType && event.type !== expectedType) return;
       clearTimeout(timeout);
       socket.off('message', listener);
@@ -37,8 +37,7 @@ beforeEach(async () => {
     dataDir: directory,
     databasePath: path.join(directory, 'db.sqlite'),
     migrationsDir: path.resolve('migrations'),
-    publicDir: path.join(directory, 'missing'),
-    accessToken: ACCESS_TOKEN
+    publicDir: path.join(directory, 'missing')
   }));
 });
 
@@ -135,5 +134,39 @@ describe('realtime', () => {
     expect(resynced.payload.story?.timer?.running).toBe(true);
     alice.close();
     reconnected.close();
+  });
+
+  it('diffuse une réaction éphémère ciblée sans modifier le snapshot', async () => {
+    const aliceCookie = await login();
+    const bobCookie = await login();
+    const room = (await app.inject({
+      method: 'POST', url: '/api/rooms', headers: { cookie: aliceCookie }, payload: { name: 'Réactions' }
+    })).json() as RoomSummary;
+    const aliceJoin = await app.inject({ method: 'POST', url: `/api/rooms/${room.slug}/join`, headers: { cookie: aliceCookie }, payload: { displayName: 'Alice', role: 'voter', avatar: 'rocket' } });
+    const bobJoin = await app.inject({ method: 'POST', url: `/api/rooms/${room.slug}/join`, headers: { cookie: bobCookie }, payload: { displayName: 'Bob', role: 'voter', avatar: 'robot' } });
+    const aliceId = aliceJoin.json().snapshot.me.id as string;
+    const bobId = bobJoin.json().snapshot.me.id as string;
+
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address();
+    if (!address || typeof address === 'string') throw new Error('No TCP address');
+    const origin = `http://127.0.0.1:${address.port}`;
+    const socket = new WebSocket(`${origin.replace('http', 'ws')}/api/rooms/${room.slug}/events`, { headers: { Cookie: bobCookie, Origin: origin } });
+    await nextEvent(socket, 'room.snapshot');
+
+    const reactionPromise = nextEvent(socket, 'reaction.sent');
+    const response = await app.inject({
+      method: 'POST', url: `/api/rooms/${room.slug}/reactions`, headers: { cookie: aliceCookie },
+      payload: { targetParticipantId: bobId, emoji: '🍅' }
+    });
+    expect(response.statusCode).toBe(204);
+    expect((await reactionPromise).payload).toMatchObject({ emoji: '🍅', fromParticipantId: aliceId, targetParticipantId: bobId });
+
+    const invalid = await app.inject({
+      method: 'POST', url: `/api/rooms/${room.slug}/reactions`, headers: { cookie: aliceCookie },
+      payload: { targetParticipantId: bobId, emoji: 'not-an-emoji' }
+    });
+    expect(invalid.statusCode).toBe(400);
+    socket.close();
   });
 });

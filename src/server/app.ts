@@ -45,7 +45,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
   });
 
   await app.register(websocket, { options: { maxPayload: 16 * 1024 } });
-  const auth = registerAuth(app, config, (token) => hub.closeSession(token));
+  const auth = registerAuth(app, (token) => hub.closeSession(token));
   registerRoomRoutes(app, config, service, hub, auth);
 
   app.get('/health', async () => {

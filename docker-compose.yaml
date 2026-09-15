@@ -60,7 +60,6 @@ services:
     image: poker-express:tools
     environment:
       NODE_ENV: test
-      ACCESS_TOKEN: ${ACCESS_TOKEN:-access-token-for-tests-32-chars}
       DATA_DIR: /tmp/poker-express-tools
       MIGRATIONS_DIR: /app/migrations
       PUBLIC_DIR: /app/dist/client
@@ -73,7 +72,6 @@ services:
     image: poker-express:e2e
     environment:
       NODE_ENV: test
-      ACCESS_TOKEN: access-token-for-e2e-32-chars
       DATA_DIR: /tmp/poker-express-e2e
       MIGRATIONS_DIR: /app/migrations
       PUBLIC_DIR: /app/dist/client

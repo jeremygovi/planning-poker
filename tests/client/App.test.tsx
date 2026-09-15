@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../src/client/App.js';
@@ -20,8 +20,8 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/');
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
-    if (path === '/api/auth/session') return new Response(JSON.stringify({ code: 'AUTH_REQUIRED' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
-    if (path === '/api/auth/login' && init?.method === 'POST') return Response.json({ authenticated: true });
+    if (path === '/api/session' && init?.method !== 'POST') return new Response(JSON.stringify({ code: 'AUTH_REQUIRED' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    if (path === '/api/session' && init?.method === 'POST') return Response.json({ authenticated: true });
     if (path === '/api/profile' && init?.method === 'PATCH') return new Response(null, { status: 204 });
     if (path === '/api/rooms') return Response.json(rooms);
     throw new Error(`Unexpected request: ${path}`);
@@ -38,7 +38,7 @@ describe('App', () => {
     localStorage.removeItem('poker-express-profile');
     const user = userEvent.setup();
     render(<App />);
-    await user.type(await screen.findByLabelText('Jeton d’accès'), 'shared-token-for-tests{Enter}');
+    await user.click(await screen.findByRole('button', { name: /Entrer en gare/ }));
 
     expect(await screen.findByRole('heading', { name: 'Comment vous appelle-t-on ?' })).toBeVisible();
     await user.type(screen.getByLabelText('Prénom ou pseudo'), 'Noa');
@@ -53,9 +53,9 @@ describe('App', () => {
   it('permet une connexion au clavier, rend les quatre thèmes et change de langue', async () => {
     const user = userEvent.setup();
     render(<App />);
-    const token = await screen.findByLabelText('Jeton d’accès');
-    await waitFor(() => expect(token).toHaveFocus());
-    await user.type(token, 'shared-token-for-tests{Enter}');
+    const board = await screen.findByRole('button', { name: /Entrer en gare/ });
+    await waitFor(() => expect(board).toHaveFocus());
+    await user.keyboard('{Enter}');
 
     expect(await screen.findByRole('heading', { name: 'Où chiffre-t-on aujourd’hui ?' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Rejoindre Agile' }).closest('article')).toHaveClass('room-card-classic');
@@ -76,14 +76,13 @@ describe('App', () => {
     expect(document.documentElement.lang).toBe('en');
   });
 
-  it('consomme le jeton d’une invitation et le retire immédiatement de l’URL', async () => {
-    window.history.replaceState({}, '', '/#token=shared-invitation-token-32-chars');
-    render(<App />);
-
-    expect(await screen.findByRole('heading', { name: 'Où chiffre-t-on aujourd’hui ?' })).toBeVisible();
-    expect(window.location.hash).toBe('');
-    expect(screen.queryByLabelText('Jeton d’accès')).not.toBeInTheDocument();
-    const loginCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input) === '/api/auth/login');
-    expect(JSON.parse(String(loginCall?.[1]?.body))).toEqual({ token: 'shared-invitation-token-32-chars' });
+  it('déclenche une pluie de jetons avec le Konami code', async () => {
+    const { container } = render(<App />);
+    await screen.findByRole('heading', { name: 'Montez à bord.' });
+    for (const key of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a']) {
+      fireEvent.keyDown(window, { key });
+    }
+    await waitFor(() => expect(container.querySelector('.chip-rain')).toBeInTheDocument());
+    expect(container.querySelectorAll('.chip-rain > i')).toHaveLength(42);
   });
 });

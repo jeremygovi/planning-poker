@@ -1,5 +1,5 @@
 import type { WebSocket } from 'ws';
-import type { RealtimeEvent, RealtimeEventType, RoomSnapshot } from '../shared/types.js';
+import type { ReactionView, RealtimeEvent, RealtimeEventType, ReactionRealtimeEvent, RoomSnapshot } from '../shared/types.js';
 
 interface Connection {
   socket: WebSocket;
@@ -47,6 +47,19 @@ export class RealtimeHub {
     await Promise.all(connections.map(async (connection) => this.send(connection, type)));
   }
 
+  broadcastReaction(roomSlug: string, payload: ReactionView): void {
+    const event: ReactionRealtimeEvent = {
+      type: 'reaction.sent',
+      payload,
+      occurredAt: new Date().toISOString()
+    };
+    for (const connection of this.rooms.get(roomSlug) ?? []) {
+      if (connection.socket.readyState === connection.socket.OPEN) {
+        connection.socket.send(JSON.stringify(event));
+      }
+    }
+  }
+
   private send(connection: Connection, type: RealtimeEventType): void {
     if (connection.socket.readyState !== connection.socket.OPEN) return;
     try {
@@ -61,4 +74,3 @@ export class RealtimeHub {
     }
   }
 }
-

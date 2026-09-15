@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   CreateRoomBodySchema,
   FinalizeBodySchema,
   JoinRoomBodySchema,
   ProfileBodySchema,
+  ReactionBodySchema,
   RejoinRoomBodySchema,
   StartStoryBodySchema,
   TimerBodySchema,
@@ -12,6 +14,7 @@ import {
   VoteBodySchema
 } from '../shared/schemas.js';
 import type { AvatarKey, DeckKey, ParticipationRole, RoomTheme, UserProfile } from '../shared/types.js';
+import type { ReactionEmoji } from '../shared/reactions.js';
 import type { AuthManager } from './auth.js';
 import type { Config } from './config.js';
 import { AppError } from './errors.js';
@@ -45,6 +48,7 @@ export function registerRoomRoutes(
   hub: RealtimeHub,
   auth: AuthManager
 ): void {
+  const reactionWindows = new Map<string, number[]>();
   const snapshot = (request: FastifyRequest, slug: string) => {
     const roomId = service.roomId(slug);
     return service.getSnapshot(
@@ -53,9 +57,11 @@ export function registerRoomRoutes(
       hub.presentIds(slug)
     );
   };
-  const requireRoomParticipant = (request: FastifyRequest, slug: string) => {
+  const requireRoomParticipant = (request: FastifyRequest, slug: string): string => {
     const roomId = service.roomId(slug);
-    service.assertRoomParticipant(slug, auth.getParticipantId(request, roomId));
+    const participantId = auth.getParticipantId(request, roomId);
+    service.assertRoomParticipant(slug, participantId);
+    return participantId as string;
   };
 
   app.get('/api/rooms', async (request) => service.listRooms(
@@ -143,10 +149,30 @@ export function registerRoomRoutes(
     }
   );
 
-  app.post<{ Params: SlugParams }>('/api/rooms/:slug/invite-token', async (request, reply) => {
-    requireRoomParticipant(request, request.params.slug);
-    return reply.header('Cache-Control', 'no-store').send({ token: config.accessToken });
-  });
+  app.post<{ Params: SlugParams; Body: { targetParticipantId: string; emoji: ReactionEmoji } }>(
+    '/api/rooms/:slug/reactions',
+    { schema: { body: ReactionBodySchema } },
+    async (request, reply) => {
+      const fromParticipantId = requireRoomParticipant(request, request.params.slug);
+      if (request.body.targetParticipantId === fromParticipantId) throw new AppError('REACTION_SELF_TARGET', 400);
+      service.assertReactionTarget(request.params.slug, request.body.targetParticipantId);
+
+      const now = Date.now();
+      const rateLimitKey = `${request.params.slug}:${fromParticipantId}`;
+      const recent = (reactionWindows.get(rateLimitKey) ?? []).filter((timestamp) => now - timestamp < 5_000);
+      if (recent.length >= 6) throw new AppError('REACTION_RATE_LIMITED', 429);
+      recent.push(now);
+      reactionWindows.set(rateLimitKey, recent);
+
+      hub.broadcastReaction(request.params.slug, {
+        id: randomUUID(),
+        emoji: request.body.emoji,
+        fromParticipantId,
+        targetParticipantId: request.body.targetParticipantId
+      });
+      return reply.code(204).send();
+    }
+  );
 
   app.post<{
     Params: SlugParams;

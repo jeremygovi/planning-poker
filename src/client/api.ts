@@ -1,4 +1,5 @@
 import type { ApiErrorBody, DeckKey, JoinRoomResponse, ParticipationRole, RoomSnapshot, RoomSummary, RoomTheme, SessionView, UserProfile } from '../shared/types.js';
+import type { ReactionEmoji } from '../shared/reactions.js';
 
 export class ApiClientError extends Error {
   constructor(public readonly code: string) {
@@ -21,9 +22,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  session: () => request<SessionView>('/api/auth/session'),
-  login: (token: string) => request<SessionView>('/api/auth/login', { method: 'POST', body: JSON.stringify({ token }) }),
-  logout: () => request<void>('/api/auth/logout', { method: 'POST' }),
+  session: () => request<SessionView>('/api/session'),
+  startSession: () => request<SessionView>('/api/session', { method: 'POST' }),
+  logout: () => request<void>('/api/session', { method: 'DELETE' }),
   rooms: () => request<RoomSummary[]>('/api/rooms'),
   updateProfile: (body: UserProfile) => request<void>('/api/profile', { method: 'PATCH', body: JSON.stringify(body) }),
   createRoom: (body: { name: string; theme: RoomTheme; defaultDeckKey: DeckKey }) =>
@@ -33,8 +34,8 @@ export const api = {
     request<JoinRoomResponse>(`/api/rooms/${encodeURIComponent(slug)}/join`, { method: 'POST', body: JSON.stringify(body) }),
   rejoin: (slug: string, token: string) =>
     request<RoomSnapshot>(`/api/rooms/${encodeURIComponent(slug)}/rejoin`, { method: 'POST', body: JSON.stringify({ token }) }),
-  inviteToken: (slug: string) =>
-    request<{ token: string }>(`/api/rooms/${encodeURIComponent(slug)}/invite-token`, { method: 'POST' }),
+  react: (slug: string, targetParticipantId: string, emoji: ReactionEmoji) =>
+    request<void>(`/api/rooms/${encodeURIComponent(slug)}/reactions`, { method: 'POST', body: JSON.stringify({ targetParticipantId, emoji }) }),
   updateRoom: (slug: string, body: { name?: string; theme?: RoomTheme; soundEnabled?: boolean; autoRevealEnabled?: boolean; defaultDeckKey?: DeckKey }) =>
     request<void>(`/api/rooms/${encodeURIComponent(slug)}`, { method: 'PATCH', body: JSON.stringify(body) }),
   updateRole: (slug: string, role: ParticipationRole) =>
