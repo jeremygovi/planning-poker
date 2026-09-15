@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { SessionView, UserProfile } from '../shared/types.js';
 import { api } from './api.js';
 import { Avatar } from './components/Avatar.js';
@@ -24,7 +25,7 @@ export function App() {
   const [path, setPath] = useState(currentPath);
   const chipRainKey = useKonamiCode();
   const t = useCallback<TFunction>((key, values) => translate(locale, key, values), [locale]);
-  const chipRain = chipRainKey !== null ? <ChipRain key={chipRainKey} t={t} /> : null;
+  const chipRain = chipRainKey !== null ? createPortal(<ChipRain key={chipRainKey} t={t} />, document.body) : null;
 
   useEffect(() => {
     document.documentElement.lang = locale;
@@ -219,7 +220,6 @@ function useKonamiCode(): number | null {
 }
 
 function ChipRain({ t }: { t: TFunction }) {
-  const labels = ['1', '2', '3', '5', '8', '13', '21', '?', '☕', '★'];
   return (
     <div className="chip-rain" aria-hidden="true">
       <span className="chip-rain-message">{t('konamiActivated')}</span>
@@ -227,8 +227,10 @@ function ChipRain({ t }: { t: TFunction }) {
         '--chip-left': `${(index * 37) % 101}%`,
         '--chip-delay': `${-(index % 12) * .21}s`,
         '--chip-duration': `${2.7 + (index % 6) * .16}s`,
-        '--chip-drift': `${((index * 23) % 140) - 70}px`
-      } as React.CSSProperties}>{labels[index % labels.length]}</i>)}
+        '--chip-drift': `${((index * 23) % 140) - 70}px`,
+        '--chip-rotation': `${(index * 47) % 360}deg`,
+        '--chip-scale': String(.72 + (index % 5) * .09)
+      } as React.CSSProperties}><span /></i>)}
     </div>
   );
 }

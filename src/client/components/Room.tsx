@@ -459,7 +459,7 @@ function ReactionTarget({ participant, meId, reactions, onReact, size = 'medium'
       {open && <span className="reaction-picker" role="menu" aria-label={t('chooseReaction')}>
         {REACTION_EMOJIS.map((emoji) => <button key={emoji} type="button" role="menuitem" aria-label={t('sendReaction', { emoji, name: participant.displayName })} onClick={() => { onReact(participant.id, emoji); setOpen(false); }}>{emoji}</button>)}
       </span>}
-      <span className="reaction-burst" aria-hidden="true">{visibleReactions.map((reaction, index) => <i key={reaction.id} style={{ '--reaction-offset': `${(index - 2) * 7}px` } as React.CSSProperties}>{reaction.emoji}</i>)}</span>
+      <span className="reaction-burst" aria-hidden="true">{visibleReactions.map((reaction, index) => <i key={reaction.id} style={{ '--reaction-start-x': `${42 + (index % 3) * 13}px`, '--reaction-start-y': `${-76 - (index % 2) * 18}px` } as React.CSSProperties}>{reaction.emoji}</i>)}</span>
     </span>
   );
 }

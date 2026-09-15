@@ -76,13 +76,15 @@ describe('App', () => {
     expect(document.documentElement.lang).toBe('en');
   });
 
-  it('déclenche une pluie de jetons avec le Konami code', async () => {
-    const { container } = render(<App />);
-    await screen.findByRole('heading', { name: 'Montez à bord.' });
+  it('déclenche une pluie de chips au-dessus du lobby avec le Konami code', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: /Entrer en gare/ }));
+    await screen.findByRole('heading', { name: 'Où chiffre-t-on aujourd’hui ?' });
     for (const key of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a']) {
       fireEvent.keyDown(window, { key });
     }
-    await waitFor(() => expect(container.querySelector('.chip-rain')).toBeInTheDocument());
-    expect(container.querySelectorAll('.chip-rain > i')).toHaveLength(42);
+    await waitFor(() => expect(document.querySelector('.chip-rain')).toBeInTheDocument());
+    expect(document.querySelectorAll('.chip-rain > i')).toHaveLength(42);
   });
 });

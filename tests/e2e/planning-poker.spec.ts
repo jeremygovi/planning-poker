@@ -108,6 +108,19 @@ test('tous les participants pilotent les manches tandis que seuls les votants po
     await expect(alice.locator('.room-toolbar').getByLabel('Jeu de cartes')).toHaveValue('scrum');
     await startStory(alice, 'EXP-101 — paiement en un clic');
     await expect(camille.locator('.poker-seat')).toHaveCount(4);
+    for (const key of ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a']) {
+      await alice.keyboard.press(key);
+    }
+    await expect(alice.locator('body > .chip-rain')).toBeVisible();
+    await expect(alice.locator('body > .chip-rain > i')).toHaveCount(42);
+    await alice.getByRole('button', { name: 'Réagir à Bob' }).click();
+    await expect(alice.getByRole('menu', { name: 'Choisir une réaction' })).toBeVisible();
+    const stacking = await alice.locator('.poker-table-shell').evaluate((table) => ({
+      table: getComputedStyle(table).zIndex,
+      dock: getComputedStyle(document.querySelector('.estimate-dock')!).zIndex
+    }));
+    expect(Number(stacking.table)).toBeGreaterThan(Number(stacking.dock));
+    await alice.getByRole('menuitem', { name: 'Envoyer ❤️ à Bob' }).click();
     await expect(camille.locator('.table-vote-card.voted')).toHaveCount(0);
     await expect(camille.locator('.start-story').getByLabel('Jeu de cartes')).toHaveCount(0);
     const roomDeck = alice.locator('.room-toolbar').getByLabel('Jeu de cartes');
