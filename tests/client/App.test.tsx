@@ -20,7 +20,7 @@ beforeEach(() => {
   window.history.replaceState({}, '', '/');
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
-    if (path === '/api/session' && init?.method !== 'POST') return new Response(JSON.stringify({ code: 'AUTH_REQUIRED' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+    if (path === '/api/session' && init?.method !== 'POST') return Response.json({ authenticated: false });
     if (path === '/api/session' && init?.method === 'POST') return Response.json({ authenticated: true });
     if (path === '/api/profile' && init?.method === 'PATCH') return new Response(null, { status: 204 });
     if (path === '/api/rooms') return Response.json(rooms);

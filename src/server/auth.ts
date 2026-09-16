@@ -89,6 +89,7 @@ export function registerAuth(
 
   app.addHook('preHandler', async (request) => {
     if (!request.url.startsWith('/api/') || (request.routeOptions.url === '/api/session' && request.method === 'POST')) return;
+    const isSessionStatusRequest = request.routeOptions.url === '/api/session' && request.method === 'GET';
     const token = cookieValue(request.headers.cookie, COOKIE_NAME);
     const session = token ? sessions.get(token) : undefined;
     if (!session || session.expiresAt <= Date.now()) {
@@ -96,14 +97,15 @@ export function registerAuth(
         sessions.delete(token);
         onSessionRemoved(token);
       }
+      if (isSessionStatusRequest) return;
       throw new AppError('AUTH_REQUIRED', 401);
     }
     request.authSession = session;
     request.sessionToken = token ?? null;
   });
 
-  app.get('/api/session', async (_request, reply) =>
-    reply.header('Cache-Control', 'no-store').send({ authenticated: true })
+  app.get('/api/session', async (request, reply) =>
+    reply.header('Cache-Control', 'no-store').send({ authenticated: request.authSession !== null })
   );
 
   app.delete('/api/session', async (request, reply) => {

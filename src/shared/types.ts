@@ -21,6 +21,10 @@ export interface SessionView {
   authenticated: true;
 }
 
+export interface SessionStatus {
+  authenticated: boolean;
+}
+
 export interface RoomSummary {
   id: string;
   slug: string;

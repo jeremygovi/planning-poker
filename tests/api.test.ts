@@ -62,6 +62,9 @@ afterEach(async () => {
 describe('Poker Express API', () => {
   it('expose un healthcheck, protège les routes et ouvre une session applicative sans secret partagé', async () => {
     expect((await app.inject({ method: 'GET', url: '/health' })).json()).toEqual({ status: 'ok' });
+    const anonymousSession = await app.inject({ method: 'GET', url: '/api/session' });
+    expect(anonymousSession.statusCode).toBe(200);
+    expect(anonymousSession.json()).toEqual({ authenticated: false });
     expect((await app.inject({ method: 'GET', url: '/api/rooms' })).statusCode).toBe(401);
     const cookie = await login();
     expect((await app.inject({ method: 'GET', url: '/api/session', headers: { cookie } })).json()).toEqual({ authenticated: true });
