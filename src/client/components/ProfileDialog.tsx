@@ -4,7 +4,7 @@ import { ApiClientError } from '../api.js';
 import { errorTranslationKey, type TFunction } from '../i18n.js';
 import { avatarImageFromFile } from '../profile.js';
 import { Avatar } from './Avatar.js';
-import { AVATAR_OPTIONS } from './avatar-options.js';
+import { AVATAR_GROUPS } from './avatar-options.js';
 
 export function ProfileDialog({ initial, required = false, t, onSave, onClose }: {
   initial: UserProfile | null;
@@ -39,7 +39,7 @@ export function ProfileDialog({ initial, required = false, t, onSave, onClose }:
           }
         }}>
           <label>{t('displayName')}<input autoFocus value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={40} required /></label>
-          <fieldset className="avatar-choice profile-avatar-choice"><legend>{t('avatar')}</legend><div>{AVATAR_OPTIONS.map((option) => <label className={!avatarImage && avatar === option.key ? 'selected' : ''} key={option.key} title={option.label}><input type="radio" name="profile-avatar" value={option.key} checked={!avatarImage && avatar === option.key} onChange={() => { setAvatar(option.key); setAvatarImage(null); }} /><Avatar avatar={option.key} size="large" /><span className="sr-only">{option.label}</span></label>)}</div></fieldset>
+          <fieldset className="avatar-choice profile-avatar-choice"><legend>{t('avatar')}</legend>{AVATAR_GROUPS.map((group) => <div className="avatar-style-group" key={group.key}><strong>{group.label}</strong><div>{group.options.map((option) => <label className={!avatarImage && avatar === option.key ? 'selected' : ''} key={option.key} title={`${group.label} — ${option.label}`}><input type="radio" name="profile-avatar" value={option.key} checked={!avatarImage && avatar === option.key} onChange={() => { setAvatar(option.key); setAvatarImage(null); }} /><Avatar avatar={option.key} size="large" /><span className="sr-only">{group.label} — {option.label}</span></label>)}</div></div>)}</fieldset>
           <div className={`custom-avatar-picker ${avatarImage ? 'selected' : ''}`}>
             <Avatar avatar={avatar} avatarImage={avatarImage} size="large" />
             <div><strong>{t('profilePhoto')}</strong><small>{t('profilePhotoHelp')}</small></div>

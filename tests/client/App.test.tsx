@@ -41,12 +41,13 @@ describe('App', () => {
     await user.click(await screen.findByRole('button', { name: /Entrer en gare/ }));
 
     expect(await screen.findByRole('heading', { name: 'Comment vous appelle-t-on ?' })).toBeVisible();
+    expect(document.querySelectorAll('.profile-avatar-choice input[type="radio"]')).toHaveLength(36);
     await user.type(screen.getByLabelText('Prénom ou pseudo'), 'Noa');
-    await user.click(screen.getByTitle('Hibou'));
+    await user.click(screen.getByTitle('Punk Zine — Hibou'));
     await user.click(screen.getByRole('button', { name: 'Enregistrer le profil' }));
 
     expect(await screen.findByRole('heading', { name: 'Où chiffre-t-on aujourd’hui ?' })).toBeVisible();
-    expect(JSON.parse(localStorage.getItem('poker-express-profile') ?? '{}')).toEqual({ displayName: 'Noa', avatar: 'owl', avatarImage: null });
+    expect(JSON.parse(localStorage.getItem('poker-express-profile') ?? '{}')).toEqual({ displayName: 'Noa', avatar: 'owl_punk', avatarImage: null });
     expect(screen.getByRole('button', { name: 'Modifier mon profil' })).toBeVisible();
   });
 

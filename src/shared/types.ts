@@ -3,7 +3,7 @@ export type RoomTheme = 'classic' | 'train' | 'station' | 'turbo';
 export type DeckKey = 'fibonacci' | 'scrum' | 'powers' | 'tshirt' | 'approval';
 export type RoomStatus = 'active' | 'archived';
 export type StoryStatus = 'voting' | 'revealed' | 'finalized' | 'cancelled';
-export type AvatarKey = 'train' | 'rocket' | 'robot' | 'fox' | 'owl' | 'cat' | 'cactus' | 'comet' | 'frog' | 'panda' | 'alien' | 'pirate';
+export type AvatarKey = string;
 
 export interface UserProfile {
   displayName: string;

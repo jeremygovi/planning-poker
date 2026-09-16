@@ -138,16 +138,9 @@ fix: preserve room settings after restart
 docs: clarify Kubernetes installation
 ```
 
-Après merge sur `master`, Semantic Release détermine la prochaine version à partir des commits, crée le tag et la GitHub Release, puis publie une image multi-architecture `linux/amd64` et `linux/arm64` sur Docker Hub. Le dépôt GitHub doit contenir ces secrets :
+Après merge sur `master`, Semantic Release détermine la prochaine version à partir des commits, crée le tag et la GitHub Release, puis publie une image multi-architecture `linux/amd64` et `linux/arm64` sur Docker Hub. Renovate est configuré dans [`renovate.json`](./renovate.json) pour maintenir npm, les images Docker, les GitHub Actions, Helm et Terraform.
 
-| Secret | Valeur |
-| --- | --- |
-| `DOCKER_USERNAME` | identifiant Docker Hub |
-| `DOCKER_PASSWORD` | jeton d’accès Docker Hub, recommandé à la place du mot de passe |
-
-Le repository Docker Hub `${DOCKER_USERNAME}/planning-poker` doit exister. Renovate est configuré dans [`renovate.json`](./renovate.json) pour maintenir npm, les images Docker, les GitHub Actions, Helm et Terraform.
-
-## Configuration et sécurité
+## Authentification et sécurité
 
 | Variable | Défaut | Description |
 | --- | --- | --- |
@@ -157,9 +150,40 @@ Le repository Docker Hub `${DOCKER_USERNAME}/planning-poker` doit exister. Renov
 | `DOCKER_TAG` | `latest` | Tag de l’image |
 | `PUBLIC_ORIGIN` | vide | Origine publique exacte autorisée |
 
-L’application ne gère pas elle-même les identités d’entreprise. Ne l’exposez pas directement à Internet : placez-la derrière un reverse proxy TLS et un contrôle d’accès tel que Cloudflare Access, un VPN ou un fournisseur OIDC. Les WebSockets doivent être transmis par le proxy.
+Poker Express ne gère pas lui-même les identités d’entreprise. Une session applicative associe un navigateur à ses participations, mais **elle n’authentifie pas la personne**. Une instance exposée directement sur Internet serait donc publique.
+
+En production :
+
+- gardez le port applicatif inaccessible depuis Internet ;
+- placez l’application derrière HTTPS et un contrôle d’accès (Cloudflare Access, proxy OIDC ou VPN) ;
+- transmettez les requêtes HTTP **et** les WebSockets par le même hostname ;
+- définissez `PUBLIC_ORIGIN` avec l’origine publique exacte, sans chemin, par exemple `https://poker.example.com`.
 
 Le conteneur s’exécute sans privilèges, avec un système de fichiers racine en lecture seule. Les photos de profil sont redimensionnées côté navigateur, conservées comme Data URL dans le profil local puis dans SQLite pour chaque participation à une salle.
+
+### Solution recommandée : Cloudflare Tunnel et Access
+
+Un [Cloudflare Tunnel](https://developers.cloudflare.com/tunnel/get-started/) publie l’application sans ouvrir de port entrant sur le serveur, tandis que Cloudflare Access contrôle les identités en amont. Le plan Zero Trust Free convient aux équipes de moins de 50 personnes au moment de la rédaction de cette documentation.
+
+1. Dans le tableau de bord Cloudflare, ouvrez **Zero Trust**, créez l’organisation et sélectionnez le plan Free.
+2. Dans **Settings → Authentication → Login methods**, ajoutez **One-time PIN**. Cette méthode envoie un code temporaire à l’adresse saisie et ne demande aucun accès administrateur à Azure AD ou Google Workspace.
+3. Dans **Access controls → Applications**, ajoutez une application **Self-hosted** couvrant le hostname complet de Poker Express, par exemple `poker.example.com`.
+4. Ajoutez une règle **Allow** dont **Include → Emails** contient les adresses exactes des collègues autorisés. Pour une petite équipe connue, cette liste est plus restrictive qu’une règle portant sur tout le domaine de messagerie.
+5. Ajoutez **Require → Login methods → One-time PIN** à cette règle et choisissez une durée de session adaptée, par exemple sept jours.
+6. Dans **Networking → Tunnels**, créez un tunnel nommé puis une route **Published application** reliant le hostname à `http://127.0.0.1:3000`, ou au nom du service Docker si `cloudflared` partage son réseau. Activez **Protect with Access** sur la route lorsque cette option est proposée. Ne publiez pas en parallèle le port applicatif sur une interface publique.
+7. Définissez `PUBLIC_ORIGIN=https://poker.example.com` dans `.env`, redémarrez l’application, puis testez en navigation privée avec une adresse autorisée et une adresse refusée. Vérifiez aussi qu’une salle reçoit bien les mises à jour en temps réel dans deux fenêtres : cela valide le passage des WebSockets.
+
+Une règle **Allow** contenant seulement **Login methods → One-time PIN**, sans liste d’emails ni domaine contrôlé, accepterait n’importe quelle adresse valide : elle ne doit pas être utilisée. Cloudflare documente explicitement cette [configuration dangereuse](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/#common-cloudflare-access-misconfigurations).
+
+Si les emails Cloudflare sont filtrés par la messagerie d’entreprise, autorisez l’expéditeur `noreply@notify.cloudflare.com` ou le domaine `notify.cloudflare.com` selon les procédures internes. Le projet n’embarque pas `cloudflared` et ne stocke pas les identifiants du tunnel.
+
+### Autres architectures possibles
+
+- **Nginx, Traefik ou Caddy + OIDC** : terminez TLS dans le reverse proxy et déléguez l’authentification à un composant tel que `oauth2-proxy`, Authelia ou authentik, connecté à votre fournisseur d’identité. Un reverse proxy HTTPS seul chiffre le trafic mais ne limite pas l’accès.
+- **VPN privé** : Tailscale, WireGuard ou le VPN de l’entreprise peuvent réserver l’application aux appareils ou utilisateurs autorisés. Le service ne doit alors écouter que sur l’interface privée ou rester derrière le proxy du VPN.
+- **Ingress Kubernetes** : associez l’Ingress à un mécanisme OIDC ou à un proxy d’authentification ; le simple fait d’activer TLS sur l’Ingress ne remplace pas l’authentification.
+
+Quelle que soit la solution, conservez une seule autorité d’accès devant l’application, désactivez tout chemin de contournement vers le port `3000`, protégez les sauvegardes SQLite et testez régulièrement l’accès refusé après révocation d’un utilisateur.
 
 ## Structure
 
