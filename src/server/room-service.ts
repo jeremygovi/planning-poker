@@ -68,16 +68,23 @@ interface VoteRow {
 
 const THEMES = new Set<RoomTheme>(['classic', 'train', 'station', 'turbo']);
 const PARTICIPATION_ROLES = new Set<ParticipationRole>(['voter', 'observer']);
-const AVATARS = new Set<AvatarKey>([
-  'train', 'rocket', 'robot', 'fox', 'owl', 'cat', 'cactus', 'comet', 'frog', 'panda', 'alien', 'pirate'
-]);
 const TIMER_DURATIONS = new Set([60, 120, 180, 300]);
+const AVATAR_KEY_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
 
 function cleanText(value: unknown, maxLength: number, code: string): string {
   if (typeof value !== 'string') throw new AppError(code, 400);
   const cleaned = value.trim();
   if (!cleaned || cleaned.length > maxLength) throw new AppError(code, 400);
   return cleaned;
+}
+
+function cleanAvatarKey(value: unknown): AvatarKey {
+  if (typeof value !== 'string' || value.length > 80) {
+    throw new AppError('INVALID_AVATAR', 400);
+  }
+  const normalized = value.replace(/^(punk|pixel)-(.+)$/, '$2_$1');
+  if (!AVATAR_KEY_PATTERN.test(normalized)) throw new AppError('INVALID_AVATAR', 400);
+  return normalized;
 }
 
 function tokenHash(value: string): string {
@@ -257,11 +264,8 @@ export class RoomService {
     if (typeof input.role !== 'string' || !PARTICIPATION_ROLES.has(input.role as ParticipationRole)) {
       throw new AppError('INVALID_PARTICIPATION_ROLE', 400);
     }
-    if (typeof input.avatar !== 'string' || !AVATARS.has(input.avatar as AvatarKey)) {
-      throw new AppError('INVALID_AVATAR', 400);
-    }
     const role = input.role as ParticipationRole;
-    const avatar = input.avatar as AvatarKey;
+    const avatar = cleanAvatarKey(input.avatar);
     const avatarImage = cleanAvatarImage(input.avatarImage);
     const rejoinToken = randomBytes(32).toString('base64url');
     return this.db.transaction(() => {
@@ -352,10 +356,7 @@ export class RoomService {
     input: { displayName: unknown; avatar: unknown; avatarImage: unknown }
   ): string[] {
     const displayName = cleanText(input.displayName, 40, 'INVALID_DISPLAY_NAME');
-    if (typeof input.avatar !== 'string' || !AVATARS.has(input.avatar as AvatarKey)) {
-      throw new AppError('INVALID_AVATAR', 400);
-    }
-    const avatar = input.avatar as AvatarKey;
+    const avatar = cleanAvatarKey(input.avatar);
     const avatarImage = cleanAvatarImage(input.avatarImage);
     const findParticipant = this.db.prepare(`
       SELECT p.display_name, p.avatar, p.avatar_image, r.slug

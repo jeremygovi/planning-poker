@@ -5,7 +5,7 @@ import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/server/app.js';
 import { loadConfig } from '../src/server/config.js';
-import type { JoinRoomResponse, RoomSnapshot, RoomSummary } from '../src/shared/types.js';
+import type { AvatarKey, JoinRoomResponse, RoomSnapshot, RoomSummary } from '../src/shared/types.js';
 
 let directory: string;
 let app: FastifyInstance;
@@ -30,7 +30,7 @@ async function join(
   slug: string,
   displayName: string,
   role: 'voter' | 'observer' = 'voter',
-  avatar: 'train' | 'rocket' | 'robot' | 'owl' = 'train',
+  avatar: AvatarKey = 'train',
   avatarImage: string | null = null
 ): Promise<JoinRoomResponse> {
   const response = await app.inject({
@@ -126,6 +126,21 @@ describe('Poker Express API', () => {
 
     const rooms = (await app.inject({ method: 'GET', url: '/api/rooms', headers: { cookie: creatorCookie } })).json() as RoomSummary[];
     expect(rooms.find((item) => item.id === room.id)?.isMember).toBe(true);
+  });
+
+  it('conserve les clés historiques et accepte les nouvelles séries d’avatars', async () => {
+    const legacyCookie = await login();
+    const punkCookie = await login();
+    const pixelCookie = await login();
+    const room = await createRoom(legacyCookie, 'Wagon avatars');
+
+    const legacy = await join(legacyCookie, room.slug, 'Legacy', 'voter', 'train');
+    const punk = await join(punkCookie, room.slug, 'Punk', 'voter', 'punk-fox');
+    const pixel = await join(pixelCookie, room.slug, 'Pixel', 'observer', 'alien_pixel');
+
+    expect(legacy.snapshot.me?.avatar).toBe('train');
+    expect(punk.snapshot.me?.avatar).toBe('fox_punk');
+    expect(pixel.snapshot.me?.avatar).toBe('alien_pixel');
   });
 
   it('valide les réactions et limite leur fréquence côté serveur', async () => {

@@ -1,10 +1,10 @@
 import { Type } from '@sinclair/typebox';
 
-const AvatarKeySchema = Type.Union([
-  Type.Literal('train'), Type.Literal('rocket'), Type.Literal('robot'), Type.Literal('fox'),
-  Type.Literal('owl'), Type.Literal('cat'), Type.Literal('cactus'), Type.Literal('comet'),
-  Type.Literal('frog'), Type.Literal('panda'), Type.Literal('alien'), Type.Literal('pirate')
-]);
+const AvatarKeySchema = Type.String({
+  minLength: 1,
+  maxLength: 80,
+  pattern: '^(?:(?:punk|pixel)-)?[a-z0-9]+(?:_[a-z0-9]+)*$'
+});
 
 const AvatarImageSchema = Type.Union([
   Type.String({ minLength: 1, maxLength: 48_000, pattern: '^data:image/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$' }),

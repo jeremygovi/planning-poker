@@ -1,30 +1,35 @@
 import type { AvatarKey, UserProfile } from '../shared/types.js';
+import { AVAILABLE_AVATAR_KEYS } from './avatar-assets.js';
 
 export const PROFILE_STORAGE_KEY = 'poker-express-profile';
 const MEMBERSHIP_STORAGE_PREFIX = 'poker-express-membership:';
 const MAX_SOURCE_IMAGE_BYTES = 5 * 1024 * 1024;
-const AVATAR_KEYS = new Set<AvatarKey>([
-  'train', 'rocket', 'robot', 'fox', 'owl', 'cat', 'cactus', 'comet', 'frog', 'panda', 'alien', 'pirate'
-]);
+const VALID_AVATAR_KEYS = new Set<AvatarKey>(AVAILABLE_AVATAR_KEYS);
 
 export function readStoredProfile(): UserProfile | null {
   try {
     const stored = window.localStorage.getItem(PROFILE_STORAGE_KEY);
     if (!stored) return null;
     const value = JSON.parse(stored) as Partial<UserProfile>;
+    const avatar = typeof value.avatar === 'string' ? normalizeStoredAvatar(value.avatar) : null;
     if (
       typeof value.displayName !== 'string' || !value.displayName.trim() || value.displayName.trim().length > 40 ||
-      typeof value.avatar !== 'string' || !AVATAR_KEYS.has(value.avatar as AvatarKey) ||
+      !avatar ||
       !(value.avatarImage === null || value.avatarImage === undefined || isSupportedAvatarImage(value.avatarImage))
     ) return null;
     return {
       displayName: value.displayName.trim(),
-      avatar: value.avatar as AvatarKey,
+      avatar,
       avatarImage: value.avatarImage ?? null
     };
   } catch {
     return null;
   }
+}
+
+function normalizeStoredAvatar(value: string): AvatarKey | null {
+  const normalized = value.replace(/^(punk|pixel)-(.+)$/, '$2_$1');
+  return VALID_AVATAR_KEYS.has(normalized) ? normalized : null;
 }
 
 export function storeProfile(profile: UserProfile): void {
