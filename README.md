@@ -49,7 +49,7 @@ La base SQLite se trouve dans `./data/poker-express.db`. La suppression ou le re
 
 ## Kubernetes avec Helm
 
-Le chart nécessite une StorageClass capable de provisionner un volume persistant :
+Avec une StorageClass par défaut, le PVC créé par le chart provisionne automatiquement son PV :
 
 ```sh
 helm upgrade --install poker-express ./charts/poker-express \
@@ -68,7 +68,24 @@ Le chart crée par défaut un PVC de `1Gi` en `ReadWriteOnce`. Pour réutiliser 
 --set persistence.existingClaim=poker-express-data
 ```
 
-Poker Express doit rester à **un replica** : les sessions et la présence sont en mémoire, tandis que SQLite ne doit être monté en écriture que par une instance. Le chart impose cette contrainte et utilise une stratégie de mise à jour `Recreate`.
+Sur un cluster sans provisionnement dynamique, l’administrateur crée d’abord un PV adapté à l’infrastructure, puis le chart peut lier son PVC à ce volume :
+
+```sh
+--set persistence.storageClass=- \
+--set persistence.volumeName=poker-express-pv
+```
+
+Le chart ne crée pas lui-même de PV : cette ressource est propre au cluster et à son fournisseur de stockage. Un `persistence.selector` peut aussi être fourni dans un fichier de valeurs pour sélectionner un PV statique par labels.
+
+Poker Express doit rester à **un replica** : les sessions et la présence WebSocket sont locales au processus, tandis que SQLite ne doit être monté en écriture que par une instance. Le chart impose cette contrainte et utilise une stratégie de mise à jour `Recreate`. Un HPA ne serait donc pas sûr actuellement ; il faudra d’abord externaliser la base et l’état temps réel partagé.
+
+Un PDB est disponible en option :
+
+```sh
+--set podDisruptionBudget.enabled=true
+```
+
+Avec `minAvailable: 1`, il protège l’unique pod contre les évictions volontaires, mais ne crée aucune haute disponibilité et peut bloquer un drain de nœud. Il est donc désactivé par défaut. Le chart désactive également le montage automatique du token Kubernetes dans le pod et laisse 30 secondes pour un arrêt propre.
 
 ## AWS EC2 avec Terraform
 

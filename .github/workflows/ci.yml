@@ -89,7 +89,13 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4
       - name: Validate Helm chart
-        run: helm lint charts/poker-express --strict
+        run: |
+          helm lint charts/poker-express --strict
+          helm template poker-express charts/poker-express \
+            --set persistence.storageClass=- \
+            --set persistence.volumeName=poker-express-pv >/dev/null
+          helm template poker-express charts/poker-express \
+            --set podDisruptionBudget.enabled=true >/dev/null
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
       - name: Check Terraform formatting

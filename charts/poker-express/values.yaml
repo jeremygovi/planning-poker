@@ -12,6 +12,8 @@ fullnameOverride: ""
 podAnnotations: {}
 podLabels: {}
 
+terminationGracePeriodSeconds: 30
+
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000
@@ -46,11 +48,23 @@ publicOrigin: ""
 persistence:
   enabled: true
   existingClaim: ""
+  # Empty: use the cluster default StorageClass. "-": disable dynamic provisioning.
   storageClass: ""
+  # Bind the generated claim to a pre-created static PV when needed.
+  volumeName: ""
+  selector: {}
   accessModes:
     - ReadWriteOnce
   size: 1Gi
   annotations: {}
+
+# A singleton PDB cannot provide high availability. When enabled, minAvailable: 1
+# protects the pod from voluntary eviction but can block node drains.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  maxUnavailable: null
+  unhealthyPodEvictionPolicy: AlwaysAllow
 
 resources:
   requests:

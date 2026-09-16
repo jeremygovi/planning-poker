@@ -4,3 +4,8 @@ Poker Express is available inside the cluster at:
 
 SQLite data is stored in PVC {{ include "poker-express.pvcName" . }}.
 Keep replicaCount at 1 and back up /data before destructive upgrades.
+{{- if .Values.podDisruptionBudget.enabled }}
+
+The PDB keeps the only replica available during voluntary disruptions and can
+therefore block a node drain. It does not make this singleton deployment highly available.
+{{- end }}
