@@ -1,80 +1,18 @@
 services:
   poker-express:
-    build:
-      context: .
-    image: poker-express:local
+    image: ${DOCKER_IMAGE:-jeremygovi/planning-poker}:${DOCKER_TAG:-latest}
+    pull_policy: always
     ports:
-      - "127.0.0.1:${PORT:-3000}:3000"
-    env_file:
-      - .env
+      - "${BIND_ADDRESS:-127.0.0.1}:${PORT:-3000}:3000"
     environment:
-      PORT: 3000
-      HOST: 0.0.0.0
-      DATA_DIR: /data
-      PUBLIC_DIR: /app/dist/client
-      MIGRATIONS_DIR: /app/migrations
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
     volumes:
       - ./data:/data
     restart: unless-stopped
     init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid
     security_opt:
       - no-new-privileges:true
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
-      interval: 30s
-      timeout: 3s
-      start_period: 10s
-      retries: 3
-
-  poker-express-dev:
-    profiles: ["dev"]
-    build:
-      context: .
-      target: development
-    image: poker-express:dev
-    ports:
-      - "127.0.0.1:${PORT:-3000}:3000"
-      - "127.0.0.1:${VITE_PORT:-5173}:5173"
-    env_file:
-      - .env
-    environment:
-      HOST: 0.0.0.0
-      PORT: 3000
-      VITE_HOST: 0.0.0.0
-      DATA_DIR: /data
-      MIGRATIONS_DIR: /app/migrations
-      PUBLIC_DIR: /app/dist/client
-    volumes:
-      - .:/app
-      - poker-express-node-modules:/app/node_modules
-      - ./data:/data
-    init: true
-    security_opt:
-      - no-new-privileges:true
-
-  poker-express-tools:
-    profiles: ["tools"]
-    build:
-      context: .
-      target: tools
-    image: poker-express:tools
-    environment:
-      NODE_ENV: test
-      DATA_DIR: /tmp/poker-express-tools
-      MIGRATIONS_DIR: /app/migrations
-      PUBLIC_DIR: /app/dist/client
-
-  poker-express-e2e:
-    profiles: ["e2e"]
-    build:
-      context: .
-      target: e2e
-    image: poker-express:e2e
-    environment:
-      NODE_ENV: test
-      DATA_DIR: /tmp/poker-express-e2e
-      MIGRATIONS_DIR: /app/migrations
-      PUBLIC_DIR: /app/dist/client
-
-volumes:
-  poker-express-node-modules:
+    stop_grace_period: 30s

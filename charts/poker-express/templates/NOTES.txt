@@ -1,0 +1,6 @@
+Poker Express is available inside the cluster at:
+
+  http://{{ include "poker-express.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+
+SQLite data is stored in PVC {{ include "poker-express.pvcName" . }}.
+Keep replicaCount at 1 and back up /data before destructive upgrades.

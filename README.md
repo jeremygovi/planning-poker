@@ -1,133 +1,155 @@
 # Poker Express
 
-Poker Express est un planning poker temps réel, auto-hébergé et ferroviaire. Les votes restent secrets jusqu’au signal de révélation, les résultats et leurs votes nominatifs sont conservés dans SQLite, et plusieurs salles peuvent circuler en parallèle sans partager leur état.
-
-L’application propose un thème clair et bleu par défaut — **Table Agile** — ainsi que trois univers originaux : **Train du Sprint**, **Quai 8** et **Turbo TGV**. Tous les visuels sont originaux, sans logo ni personnage propriétaire. L’interface est responsive, bilingue français/anglais, utilisable au clavier et respecte `prefers-reduced-motion`.
+Poker Express est une application de planning poker temps réel, bilingue et auto-hébergée. Elle fournit plusieurs jeux d’estimation, des salles indépendantes, un historique SQLite, des rôles votant/observateur et des réactions en direct.
 
 ![Aperçu d’une salle Poker Express avec quatre participants](./docs/poker-express-preview.png)
 
-## Démarrage rapide
+## Choisir un déploiement
 
-Il faut uniquement Docker avec Docker Compose, et éventuellement `make`. **Aucune installation de Node.js ou commande npm sur l’hôte n’est nécessaire.**
+| Cible | Méthode | Stockage |
+| --- | --- | --- |
+| Serveur Linux, VM ou NAS | Docker Compose | Répertoire local `./data` |
+| Kubernetes | Chart Helm | PVC `ReadWriteOnce` |
+| AWS | Terraform + EC2 `t3.micro` | Volume gp3 chiffré |
+| Poste développeur | Compose de développement | Répertoire local `./data` |
 
-1. Créez la configuration locale :
+L’image officielle est `jeremygovi/planning-poker`. Utilisez un tag de version, par exemple `1.2.3`, pour un déploiement reproductible. Le tag `latest` suit la dernière release.
 
-   ```sh
-   cp .env.sample .env
-   ```
+## Docker Compose
 
-2. Ajustez éventuellement le port local :
-
-   ```dotenv
-   PORT=3000
-   ```
-
-3. Construisez et démarrez :
-
-   ```sh
-   make prod
-   ```
-
-4. Ouvrez <http://127.0.0.1:3000>.
-
-L’écran « Montez à bord » ouvre une session locale dans le navigateur, puis chaque personne configure une seule fois son profil : nom, avatar illustré ou photo personnelle. Ce profil est réutilisé dans toutes les salles et reste modifiable depuis l’en-tête. Toute personne ayant franchi la couche d’accès placée devant l’application peut créer une salle.
-
-Chaque participant d’une salle peut en modifier les réglages, piloter les manches, la partager, l’archiver et la restaurer. Le rôle choisi à l’entrée sert uniquement à participer au vote ou à observer. L’invitation est l’URL directe de la salle ; Cloudflare Access en contrôle l’ouverture. Le navigateur mémorise aussi localement un jeton de reprise propre au participant afin de retrouver son appartenance après un redémarrage du serveur. Ce jeton de reprise n’accorde aucun accès à l’application et ne quitte pas le navigateur, sauf lors de la reprise de la salle.
-
-## Commandes Docker
-
-Toutes les commandes Node sont exécutées dans un conteneur :
-
-| Commande | Usage |
-| --- | --- |
-| `make install` | Construit l’image d’outillage et ses dépendances verrouillées |
-| `make dev` | Lance Fastify et Vite avec rechargement automatique |
-| `make test` | Lance les tests unitaires, API, WebSocket et React |
-| `make e2e` | Lance le parcours Playwright multi-utilisateurs dans Chromium |
-| `make lint` | Lance ESLint |
-| `make typecheck` | Vérifie le client et le serveur TypeScript |
-| `make build` | Construit l’image de production |
-| `make up` / `make down` | Démarre / arrête la production |
-| `make logs` | Suit les journaux du conteneur |
-| `make shell` | Ouvre un shell dans le conteneur applicatif |
-| `make backup` | Produit une sauvegarde SQLite cohérente dans `./backups` |
-| `make clean` | Arrête les conteneurs de travail sans toucher à `./data` |
-
-Les équivalents `docker compose` sont visibles dans le [Makefile](./Makefile). Le lockfile est consommé avec `npm ci` uniquement pendant la construction des images.
-
-## Déroulement d’une estimation
-
-Une salle contient au plus une user story active. N’importe quel participant peut choisir pour la salle le jeu Fibonacci, Scrum, puissances de deux ou T-shirt ; ce réglage persiste entre les estimations et reste modifiable lorsqu’aucune manche n’est en cours. Pour lancer une manche, il suffit de saisir un titre libre. Si ce titre contient une URL HTTP(S), l’application la détecte et la rend cliquable.
-
-Les participants et leurs cartes restent visibles autour d’une table de poker pendant tout le vote. Une carte grise passe au vert dès qu’un votant a choisi ; au reveal, les mêmes cartes se retournent pour afficher uniquement leur valeur. Les spectateurs ne sont ni comptés parmi les votants, ni autorisés à poser une carte, et leur emplacement porte explicitement la mention `SPEC.`. Avant la révélation, le serveur ne diffuse que l’état « a voté » — jamais la valeur.
-
-Un clic sur l’avatar d’un collègue en ligne ouvre une palette de réactions. Les emojis sont diffusés en temps réel, restent éphémères et ne sont pas stockés. Le serveur limite leur fréquence pour éviter le spam. Le Konami code classique (`↑ ↑ ↓ ↓ ← → ← → B A`) déclenche une pluie de chips de pomme de terre pendant quelques secondes ; l’animation est neutralisée lorsque le système demande une réduction des mouvements.
-
-Le profil propose douze avatars SVG originaux ou une photo personnelle. La photo est recadrée, redimensionnée et compressée côté navigateur avant d’être partagée dans les salles ; aucun média externe n’est chargé. Lorsque le son global est activé, des signaux Web Audio procéduraux accompagnent la nouvelle story, la pose d’une carte, la révélation, le départ et la fin du minuteur, la décision finale et le consensus.
-
-La carte neutre est toujours stockée comme `abstain`, mais devient Banane, Café ou Joker selon le thème. Elle est exclue du consensus et des calculs. À la révélation :
-
-- une valeur strictement majoritaire est suggérée ;
-- une égalité numérique produit une moyenne à deux décimales ;
-- T-shirt utilise la médiane ordonnée, taille supérieure pour une paire centrale ;
-- uniquement des cartes neutres ne produit aucune suggestion ;
-- au moins deux votes non neutres identiques déclenchent l’animation de consensus si le son de la salle est actif.
-
-La suggestion reste indicative : n’importe quel participant peut valider une valeur finale libre. Titre, instantané du jeu de la salle, votes révélés, suggestion, valeur finale et horodatages rejoignent alors l’historique.
-
-## Persistance et sauvegarde
-
-Compose monte `./data:/data`. La base se trouve dans `./data/poker-express.db` et utilise WAL, les clés étrangères et un délai d’attente en cas de concurrence. Remplacer ou reconstruire le conteneur ne supprime donc ni les salles ni les estimations.
-
-`make backup` utilise l’API de sauvegarde SQLite depuis le conteneur avant de copier le fichier dans `./backups`. Le nettoyage ne supprime jamais `./data`.
-
-Pour vérifier manuellement la persistance :
+Prérequis : Docker avec le plugin Compose.
 
 ```sh
-make prod
-# créer une salle et finaliser une estimation
-docker compose down
+cp .env.sample .env
+mkdir -p data
+# Sous Linux, le conteneur non-root (UID 1000) doit pouvoir écrire dans ce dossier.
+sudo chown -R 1000:1000 data
 docker compose up -d
 ```
 
-## Sécurité et exposition
+L’application écoute par défaut sur <http://127.0.0.1:3000>. Pour l’exposer derrière un reverse proxy, configurez `.env` :
 
-- contrôle d’accès Internet délégué à Cloudflare Access ; l’application ne contient volontairement plus de mot de passe ou secret d’équipe ;
-- sessions applicatives aléatoires en mémoire, cookies `HttpOnly`, `SameSite=Strict`, durée de sept jours ;
-- jetons de reprise individuels aléatoires, stockés hachés dans SQLite et conservés dans le navigateur ;
-- attribut `Secure` automatiquement ajouté lorsque Fastify voit HTTPS ou `X-Forwarded-Proto: https` ;
-- contrôle d’origine sur les mutations REST et les WebSockets ;
-- validation TypeBox, CSP restrictive, HSTS derrière HTTPS et en-têtes de durcissement ;
-- processus Node non-root, `no-new-privileges`, `init` et healthcheck ;
-- publication Compose limitée par défaut à `127.0.0.1`.
+```dotenv
+BIND_ADDRESS=0.0.0.0
+PORT=3000
+DOCKER_TAG=1.2.3
+PUBLIC_ORIGIN=https://poker.example.com
+```
 
-Poker Express n’authentifie pas lui-même les identités. Une exposition directe sur Internet rendrait donc l’application publique. En production, le hostname complet doit être couvert par Cloudflare Access et l’origine ne doit pas rester joignable en contournant le tunnel. Les sessions applicatives servent uniquement à associer un navigateur à ses participants.
+Commandes utiles :
 
-Pour une origine publique fixe, ajoutez par exemple `PUBLIC_ORIGIN=https://poker.example.com` dans `.env`. Elle doit correspondre exactement à l’origine vue par le navigateur.
+```sh
+docker compose logs -f
+docker compose pull && docker compose up -d
+docker compose down
+make backup
+```
 
-## Cloudflare Tunnel et Access
+La base SQLite se trouve dans `./data/poker-express.db`. La suppression ou le remplacement du conteneur ne supprime pas ce répertoire.
 
-Le déploiement Internet attendu utilise un tunnel nommé et Cloudflare Access. Le plan Zero Trust Free convient aux équipes de moins de 50 personnes au moment de la rédaction de cette documentation.
+## Kubernetes avec Helm
 
-1. Dans le tableau de bord Cloudflare, ouvrez **Zero Trust** et activez le plan Free.
-2. Dans **Settings → Authentication → Login methods**, ajoutez **One-time PIN**. Cette méthode envoie un code temporaire à l’adresse saisie et ne demande aucun accès administrateur à Azure AD ou Google Workspace.
-3. Dans **Access controls → Applications**, ajoutez une application **Self-hosted** couvrant le hostname complet de Poker Express, par exemple `poker.example.com`.
-4. Ajoutez une règle **Allow** dont `Include → Emails` contient les adresses exactes des collègues autorisés. Pour une équipe maîtrisée, cette liste est plus restrictive qu’une règle portant sur tout le domaine de messagerie.
-5. Limitez cette règle à la méthode **One-time PIN** et choisissez une durée de session adaptée, par exemple sept jours.
-6. Rattachez le hostname au tunnel vers `http://127.0.0.1:3000` — ou vers le nom du service Docker si `cloudflared` partage son réseau — puis activez **Protect with Access** sur la route lorsqu’elle est disponible. Ne publiez pas en parallèle le port applicatif sur une interface publique.
-7. Définissez `PUBLIC_ORIGIN=https://poker.example.com` dans `.env`, redémarrez l’application, puis testez en navigation privée avec une adresse autorisée et une adresse refusée.
+Le chart nécessite une StorageClass capable de provisionner un volume persistant :
 
-Une règle qui autorise seulement la méthode One-time PIN, sans liste d’emails ou domaine contrôlé, accepterait n’importe quelle adresse valide : elle ne doit pas être utilisée. Si les emails Cloudflare sont filtrés par la messagerie d’entreprise, autorisez l’expéditeur `noreply@notify.cloudflare.com` ou le domaine `notify.cloudflare.com` selon les procédures internes.
+```sh
+helm upgrade --install poker-express ./charts/poker-express \
+  --namespace poker-express \
+  --create-namespace \
+  --set image.tag=1.2.3 \
+  --set publicOrigin=https://poker.example.com \
+  --set ingress.enabled=true \
+  --set ingress.className=nginx \
+  --set ingress.hosts[0].host=poker.example.com
+```
 
-Le projet n’embarque pas `cloudflared` et ne stocke pas les identifiants du tunnel. Les WebSockets passent par le même hostname protégé que le reste de l’application.
+Le chart crée par défaut un PVC de `1Gi` en `ReadWriteOnce`. Pour réutiliser un claim existant :
 
-## Architecture
+```sh
+--set persistence.existingClaim=poker-express-data
+```
 
-- `src/shared` : contrats métier, jeux et schémas partagés ;
-- `src/server` : serveur Fastify autoritaire, sessions, SQLite, commandes REST et diffusion WebSocket ;
-- `src/client` : SPA React/Vite, thèmes, SVG originaux, animations et sons Web Audio procéduraux ;
-- `migrations` : migrations SQL versionnées, appliquées transactionnellement ;
-- `tests` : règles d’estimation, API, temps réel, React et Playwright ;
-- `data` : montage persistant, ignoré par Git à l’exception de `.gitkeep`.
+Poker Express doit rester à **un replica** : les sessions et la présence sont en mémoire, tandis que SQLite ne doit être monté en écriture que par une instance. Le chart impose cette contrainte et utilise une stratégie de mise à jour `Recreate`.
 
-La V1 vise une seule instance applicative. Les sessions et la présence sont en mémoire ; les salles, participants, manches, votes et historiques sont persistants. Il n’y a ni jeu personnalisé, ni récupération du contenu de la user story, ni intégration Jira/GitLab, ni suppression définitive depuis l’interface.
+## AWS EC2 avec Terraform
+
+Le module [`terraform`](./terraform) déploie une instance Amazon Linux 2023, installe Docker et exécute l’image comme service `systemd`. Il ne clone pas le dépôt et n’installe pas Node.js. L’administration passe par AWS Systems Manager Session Manager ; aucun port SSH n’est ouvert.
+
+```sh
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+# Renseigner allowed_cidrs avec les adresses de votre entreprise ou VPN.
+terraform init
+terraform plan
+terraform apply
+```
+
+`terraform output application_url` affiche l’URL et `terraform output ssm_start_session_command` la commande d’administration. Les données sont conservées dans `/opt/poker-express/data` sur le volume racine chiffré.
+
+`t3.micro` est la valeur par défaut, mais sa gratuité dépend de l’ancienneté, des crédits et de la région du compte AWS. L’IPv4 publique, le stockage et le trafic peuvent également être facturés : vérifiez le plan Terraform et la tarification AWS avant l’application.
+
+## Développement
+
+Toutes les commandes de développement utilisent [`docker-compose-dev.yaml`](./docker-compose-dev.yaml) :
+
+```sh
+cp .env.sample .env
+make dev        # Fastify et Vite avec rechargement automatique
+make test       # tests unitaires, API, WebSocket et React
+make e2e        # parcours Playwright multi-utilisateurs
+make lint
+make typecheck
+make build      # image locale de production
+```
+
+Le serveur nécessite Node.js 24 uniquement si les commandes npm sont lancées directement sur l’hôte.
+
+## CI, commits et releases
+
+Chaque pull request exécute :
+
+- Commitlint sur le titre et les commits de la PR ;
+- TypeScript, ESLint, tests et build applicatif ;
+- tests Playwright ;
+- build de l’image de production ;
+- validation des fichiers Compose, du chart Helm et de Terraform.
+
+Les messages suivent [Conventional Commits](https://www.conventionalcommits.org/) :
+
+```text
+feat: add a new voting deck
+fix: preserve room settings after restart
+docs: clarify Kubernetes installation
+```
+
+Après merge sur `master`, Semantic Release détermine la prochaine version à partir des commits, crée le tag et la GitHub Release, puis publie une image multi-architecture `linux/amd64` et `linux/arm64` sur Docker Hub. Le dépôt GitHub doit contenir ces secrets :
+
+| Secret | Valeur |
+| --- | --- |
+| `DOCKER_USERNAME` | identifiant Docker Hub |
+| `DOCKER_PASSWORD` | jeton d’accès Docker Hub, recommandé à la place du mot de passe |
+
+Le repository Docker Hub `${DOCKER_USERNAME}/planning-poker` doit exister. Renovate est configuré dans [`renovate.json`](./renovate.json) pour maintenir npm, les images Docker, les GitHub Actions, Helm et Terraform.
+
+## Configuration et sécurité
+
+| Variable | Défaut | Description |
+| --- | --- | --- |
+| `PORT` | `3000` | Port publié par Compose |
+| `BIND_ADDRESS` | `127.0.0.1` | Interface publiée par Compose |
+| `DOCKER_IMAGE` | `jeremygovi/planning-poker` | Image à exécuter |
+| `DOCKER_TAG` | `latest` | Tag de l’image |
+| `PUBLIC_ORIGIN` | vide | Origine publique exacte autorisée |
+
+L’application ne gère pas elle-même les identités d’entreprise. Ne l’exposez pas directement à Internet : placez-la derrière un reverse proxy TLS et un contrôle d’accès tel que Cloudflare Access, un VPN ou un fournisseur OIDC. Les WebSockets doivent être transmis par le proxy.
+
+Le conteneur s’exécute sans privilèges, avec un système de fichiers racine en lecture seule. Les photos de profil sont redimensionnées côté navigateur, conservées comme Data URL dans le profil local puis dans SQLite pour chaque participation à une salle.
+
+## Structure
+
+- `src/client` : interface React/Vite ;
+- `src/server` : API Fastify, WebSocket et SQLite ;
+- `migrations` : migrations SQL ;
+- `charts/poker-express` : chart Helm et PVC ;
+- `terraform` : déploiement EC2 ;
+- `.github/workflows` : contrôles de PR et releases ;
+- `tests` : tests applicatifs et end-to-end.

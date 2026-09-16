@@ -8,4 +8,7 @@ test-results
 data
 backups
 *.log
-
+**/.terraform
+*.tfstate
+*.tfstate.*
+*.tfvars

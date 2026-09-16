@@ -1,0 +1,33 @@
+#!/bin/bash
+set -euxo pipefail
+
+dnf install -y docker
+systemctl enable --now docker
+
+install -d -m 0750 -o 1000 -g 1000 /opt/poker-express/data
+printf '%s' '${public_origin_base64}' | base64 --decode | sed 's/^/PUBLIC_ORIGIN=/' > /opt/poker-express/app.env
+chmod 0600 /opt/poker-express/app.env
+
+cat > /etc/systemd/system/poker-express.service <<'UNIT'
+[Unit]
+Description=Poker Express container
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Restart=always
+RestartSec=5
+TimeoutStartSec=0
+TimeoutStopSec=40
+ExecStartPre=-/usr/bin/docker rm -f poker-express
+ExecStartPre=/usr/bin/docker pull ${docker_image}
+ExecStart=/usr/bin/docker run --name poker-express --init --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m --security-opt no-new-privileges --env-file /opt/poker-express/app.env --publish ${app_port}:3000 --volume /opt/poker-express/data:/data ${docker_image}
+ExecStop=/usr/bin/docker stop --time 30 poker-express
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable --now poker-express.service
