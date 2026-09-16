@@ -1,0 +1,23 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- $hasMin := not (kindIs "invalid" .Values.podDisruptionBudget.minAvailable) }}
+{{- $hasMax := not (kindIs "invalid" .Values.podDisruptionBudget.maxUnavailable) }}
+{{- if eq $hasMin $hasMax }}
+{{- fail "exactly one of podDisruptionBudget.minAvailable or podDisruptionBudget.maxUnavailable must be set" }}
+{{- end }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "poker-express.fullname" . }}
+  labels:
+    {{- include "poker-express.labels" . | nindent 4 }}
+spec:
+  {{- if $hasMin }}
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  {{- else }}
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  {{- end }}
+  unhealthyPodEvictionPolicy: {{ .Values.podDisruptionBudget.unhealthyPodEvictionPolicy }}
+  selector:
+    matchLabels:
+      {{- include "poker-express.selectorLabels" . | nindent 6 }}
+{{- end }}

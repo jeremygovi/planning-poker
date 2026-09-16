@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "const": 1,
+      "description": "SQLite and in-memory sessions require exactly one replica."
+    },
+    "publicOrigin": {
+      "type": "string",
+      "pattern": "^$|^https?://[^/]+$"
+    },
+    "terminationGracePeriodSeconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "persistence": {
+      "type": "object",
+      "required": ["enabled", "size"],
+      "properties": {
+        "enabled": { "type": "boolean", "const": true },
+        "existingClaim": { "type": "string" },
+        "storageClass": { "type": "string" },
+        "volumeName": { "type": "string" },
+        "selector": { "type": "object" },
+        "accessModes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "size": { "type": "string", "pattern": "^[0-9]+(Mi|Gi|Ti)$" },
+        "annotations": { "type": "object" }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "required": ["enabled", "unhealthyPodEvictionPolicy"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minAvailable": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "pattern": "^(100|[0-9]{1,2})%$" },
+            { "type": "null" }
+          ]
+        },
+        "maxUnavailable": {
+          "oneOf": [
+            { "type": "integer", "minimum": 0 },
+            { "type": "string", "pattern": "^(100|[0-9]{1,2})%$" },
+            { "type": "null" }
+          ]
+        },
+        "unhealthyPodEvictionPolicy": {
+          "type": "string",
+          "enum": ["IfHealthyBudget", "AlwaysAllow"]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+apiVersion: v2
+name: poker-express
+description: Planning poker temps réel et auto-hébergé
+type: application
+version: 0.1.0
+appVersion: "latest"
+home: https://github.com/jeremygovi/planning-poker
+sources:
+  - https://github.com/jeremygovi/planning-poker
+maintainers:
+  - name: jeremygovi

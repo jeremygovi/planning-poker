@@ -1,0 +1,79 @@
+replicaCount: 1
+
+image:
+  repository: jeremygovi/planning-poker
+  pullPolicy: Always
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+podAnnotations: {}
+podLabels: {}
+
+terminationGracePeriodSeconds: 30
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: poker.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+publicOrigin: ""
+
+persistence:
+  enabled: true
+  existingClaim: ""
+  # Empty: use the cluster default StorageClass. "-": disable dynamic provisioning.
+  storageClass: ""
+  # Bind the generated claim to a pre-created static PV when needed.
+  volumeName: ""
+  selector: {}
+  accessModes:
+    - ReadWriteOnce
+  size: 1Gi
+  annotations: {}
+
+# A singleton PDB cannot provide high availability. When enabled, minAvailable: 1
+# protects the pod from voluntary eviction but can block node drains.
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  maxUnavailable: null
+  unhealthyPodEvictionPolicy: AlwaysAllow
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

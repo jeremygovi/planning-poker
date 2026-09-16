@@ -27,6 +27,16 @@ CMD ["npm", "run", "test:e2e"]
 
 FROM node:24-alpine AS runtime
 
+ARG VERSION=dev
+ARG REVISION=unknown
+ARG SOURCE_URL=https://github.com/jeremygovi/planning-poker
+
+LABEL org.opencontainers.image.title="Poker Express" \
+      org.opencontainers.image.description="Planning poker temps réel et auto-hébergé" \
+      org.opencontainers.image.source="${SOURCE_URL}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}"
+
 ENV NODE_ENV=production \
     PORT=3000 \
     HOST=0.0.0.0 \

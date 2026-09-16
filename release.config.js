@@ -1,0 +1,15 @@
+export default {
+  branches: ['master'],
+  tagFormat: 'v${version}',
+  plugins: [
+    '@semantic-release/commit-analyzer',
+    '@semantic-release/release-notes-generator',
+    [
+      '@semantic-release/exec',
+      {
+        prepareCmd: './scripts/publish-docker.sh ${nextRelease.version}'
+      }
+    ],
+    '@semantic-release/github'
+  ]
+};
