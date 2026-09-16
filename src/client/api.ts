@@ -1,4 +1,4 @@
-import type { ApiErrorBody, DeckKey, JoinRoomResponse, ParticipationRole, RoomSnapshot, RoomSummary, RoomTheme, SessionView, UserProfile } from '../shared/types.js';
+import type { ApiErrorBody, DeckKey, JoinRoomResponse, ParticipationRole, RoomSnapshot, RoomSummary, RoomTheme, SessionStatus, SessionView, UserProfile } from '../shared/types.js';
 import type { ReactionEmoji } from '../shared/reactions.js';
 
 export class ApiClientError extends Error {
@@ -22,7 +22,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  session: () => request<SessionView>('/api/session'),
+  session: async (): Promise<SessionView | null> => {
+    const status = await request<SessionStatus>('/api/session');
+    return status.authenticated ? { authenticated: true } : null;
+  },
   startSession: () => request<SessionView>('/api/session', { method: 'POST' }),
   logout: () => request<void>('/api/session', { method: 'DELETE' }),
   rooms: () => request<RoomSummary[]>('/api/rooms'),
