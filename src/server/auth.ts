@@ -68,7 +68,17 @@ export function registerAuth(
   app.decorateRequest('authSession', null);
   app.decorateRequest('sessionToken', null);
 
-  app.post('/api/session', async (_request, reply) => {
+  app.post('/api/session', {
+    onRequest: async (request) => {
+      // This endpoint has no request payload. Normalizing an unexpected media
+      // type keeps the request from being rejected before the handler.
+      const contentType = request.headers['content-type'];
+      if (contentType && !/^(?:application\/json|text\/plain)(?:\s*;|$)/i.test(contentType)) {
+        request.log.warn({ contentType }, 'Ignoring unsupported content type on session creation');
+        request.headers['content-type'] = 'text/plain';
+      }
+    }
+  }, async (_request, reply) => {
     const now = Date.now();
     for (const [token, session] of sessions) {
       if (session.expiresAt <= now) {

@@ -41,6 +41,11 @@ describe('App', () => {
     await user.click(await screen.findByRole('button', { name: /Entrer en gare/ }));
 
     expect(await screen.findByRole('heading', { name: 'Comment vous appelle-t-on ?' })).toBeVisible();
+    expect(fetch).toHaveBeenCalledWith('/api/session', {
+      method: 'POST',
+      body: '{}',
+      headers: { 'Content-Type': 'application/json' }
+    });
     expect(document.querySelectorAll('.profile-avatar-choice input[type="radio"]')).toHaveLength(36);
     await user.type(screen.getByLabelText('Prénom ou pseudo'), 'Noa');
     await user.click(screen.getByTitle('Punk Zine — Hibou'));
