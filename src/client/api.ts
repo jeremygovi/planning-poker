@@ -8,9 +8,12 @@ export class ApiClientError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = init?.method?.toUpperCase() ?? 'GET';
+  const body = init?.body ?? (['POST', 'PUT', 'PATCH'].includes(method) ? JSON.stringify({}) : undefined);
   const response = await fetch(path, {
     ...init,
-    headers: init?.body ? { 'Content-Type': 'application/json', ...init.headers } : init?.headers
+    ...(body !== undefined ? { body } : {}),
+    headers: body !== undefined ? { 'Content-Type': 'application/json', ...init?.headers } : init?.headers
   });
   if (!response.ok) {
     let body: ApiErrorBody = { code: 'INTERNAL_ERROR' };

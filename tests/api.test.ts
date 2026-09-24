@@ -71,6 +71,18 @@ describe('Poker Express API', () => {
     expect((await app.inject({ method: 'POST', url: '/api/auth/login', headers: { cookie }, payload: { token: 'obsolete' } })).statusCode).toBe(404);
   });
 
+  it('ouvre une session même si un client ajoute un type de contenu à la requête sans payload', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/session',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ authenticated: true });
+    expect(response.headers['set-cookie']).toContain('poker_express_session=');
+  });
+
   it('permet à chaque participant de piloter la salle, quel que soit son rôle', async () => {
     const creatorCookie = await login();
     const memberCookie = await login();
