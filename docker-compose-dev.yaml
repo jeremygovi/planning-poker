@@ -33,8 +33,7 @@ services:
       target: development
     image: poker-express:dev
     ports:
-      - "127.0.0.1:${PORT:-3000}:3000"
-      - "127.0.0.1:${VITE_PORT:-5173}:5173"
+      - "127.0.0.1:${PORT:-3000}:5173"
     env_file:
       - .env
     environment:

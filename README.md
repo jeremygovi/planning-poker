@@ -110,7 +110,7 @@ Toutes les commandes de développement utilisent [`docker-compose-dev.yaml`](./d
 
 ```sh
 cp .env.sample .env
-make dev        # Fastify et Vite avec rechargement automatique
+make dev        # application sur http://127.0.0.1:3000 avec rechargement automatique
 make test       # tests unitaires, API, WebSocket et React
 make e2e        # parcours Playwright multi-utilisateurs
 make lint

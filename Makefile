@@ -12,7 +12,7 @@ help: ## Afficher cette aide
 install: ## Installer les dépendances Node.js
 	$(DEV_COMPOSE) --profile tools build poker-express-tools
 
-dev: ## Lancer le serveur et l'interface avec rechargement automatique
+dev: ## Lancer l'application sur le port habituel avec rechargement automatique
 	$(DEV_COMPOSE) --profile dev up --build poker-express-dev
 
 test: ## Exécuter les tests unitaires et API
