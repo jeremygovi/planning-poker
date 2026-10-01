@@ -27,11 +27,13 @@ export function Room({
   const [celebrating, setCelebrating] = useState(false);
   const [reactions, setReactions] = useState<ReactionView[]>([]);
   const [reactionAnnouncement, setReactionAnnouncement] = useState('');
+  const [localTheme, setLocalTheme] = useState<RoomTheme | null>(() => readLocalTheme(slug));
   const messageFor = useErrorMessage(t);
   const handleError = useCallback((reason: unknown) => setError(messageFor(reason)), [messageFor]);
   const joined = Boolean(snapshot?.me);
   const celebrationTimer = useRef<number | null>(null);
   const snapshotRef = useRef<RoomSnapshot | null>(null);
+  const localThemeRef = useRef<RoomTheme | null>(localTheme);
   const reactionTimers = useRef(new Map<string, number>());
 
   const load = useCallback(async () => {
@@ -58,6 +60,11 @@ export function Room({
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
+    const nextTheme = readLocalTheme(slug);
+    localThemeRef.current = nextTheme;
+    setLocalTheme(nextTheme);
+  }, [slug]);
+  useEffect(() => {
     const unlock = () => unlockRoomSounds();
     window.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
@@ -67,8 +74,8 @@ export function Room({
     };
   }, []);
   useEffect(() => {
-    if (snapshot) document.documentElement.dataset.theme = snapshot.room.theme;
-  }, [snapshot]);
+    if (snapshot) document.documentElement.dataset.theme = localTheme ?? snapshot.room.theme;
+  }, [localTheme, snapshot]);
 
   useEffect(() => () => {
     for (const timer of reactionTimers.current.values()) window.clearTimeout(timer);
@@ -101,21 +108,22 @@ export function Room({
         const previous = snapshotRef.current;
         snapshotRef.current = event.payload;
         setSnapshot(event.payload);
+        const effectiveTheme = localThemeRef.current ?? event.payload.room.theme;
         if (event.payload.room.soundEnabled) {
-          if (event.type === 'story.started') playRoomSound('story-start', event.payload.room.theme);
-          if (event.type === 'story.finalized') playRoomSound('finalized', event.payload.room.theme);
+          if (event.type === 'story.started') playRoomSound('story-start', effectiveTheme);
+          if (event.type === 'story.finalized') playRoomSound('finalized', effectiveTheme);
           if (event.type === 'timer.changed' && event.payload.story?.timer?.running && !previous?.story?.timer?.running) {
-            playRoomSound('timer-start', event.payload.room.theme);
+            playRoomSound('timer-start', effectiveTheme);
           }
         }
         if (event.type === 'story.revealed') {
           if (event.payload.story?.unanimous) {
             setCelebrating(true);
-            if (event.payload.room.soundEnabled) playRoomSound('consensus', event.payload.room.theme);
+            if (event.payload.room.soundEnabled) playRoomSound('consensus', effectiveTheme);
             if (celebrationTimer.current) window.clearTimeout(celebrationTimer.current);
             celebrationTimer.current = window.setTimeout(() => setCelebrating(false), 3600);
           } else if (event.payload.room.soundEnabled) {
-            playRoomSound('reveal', event.payload.room.theme);
+            playRoomSound('reveal', effectiveTheme);
           }
         }
       });
@@ -150,11 +158,13 @@ export function Room({
     catch (reason) { setError(messageFor(reason)); }
   }} error={error} navigate={navigate} />;
 
+  const effectiveTheme = localTheme ?? snapshot.room.theme;
+
   return (
     <main className="room-page">
       {connectionLost && <div className="connection-banner" role="status">{t('connectionLost')}</div>}
       <p className="sr-only" aria-live="polite">{reactionAnnouncement}</p>
-      {celebrating && <Celebration theme={snapshot.room.theme} t={t} />}
+      {celebrating && <Celebration theme={effectiveTheme} t={t} />}
       <section className="room-toolbar page">
         <button className="back-link" type="button" onClick={() => navigate('/')}><span>←</span>{t('backLobby')}</button>
         <div className="room-identity"><p>{t('roomCode', { code: snapshot.room.slug })}</p><h1>{snapshot.room.name}</h1></div>
@@ -170,13 +180,12 @@ export function Room({
             } catch (reason) { setError(messageFor(reason)); }
           }}>↗ <span>{t('share')}</span></button>
           <>
-            <label className="compact-select"><span>{t('theme')}</span><select value={snapshot.room.theme} onChange={async (event) => {
+            <label className="compact-select"><span>{t('theme')}</span><select value={effectiveTheme} onChange={(event) => {
               const theme = event.target.value as RoomTheme;
-              const next = { ...snapshot, room: { ...snapshot.room, theme } };
-              snapshotRef.current = next;
-              setSnapshot(next);
+              localThemeRef.current = theme;
+              setLocalTheme(theme);
+              storeLocalTheme(slug, theme);
               document.documentElement.dataset.theme = theme;
-              try { await api.updateRoom(slug, { theme }); } catch (reason) { setError(messageFor(reason)); await load(); }
             }}><option value="classic">{t('themeClassic')}</option><option value="train">{t('themeTrain')}</option><option value="station">{t('themeStation')}</option><option value="turbo">{t('themeTurbo')}</option></select></label>
             <label className="compact-select"><span>{t('deck')}</span><select value={snapshot.room.defaultDeckKey} title={snapshot.story ? t('deckNextRound') : ''} onChange={async (event) => {
               const defaultDeckKey = event.target.value as DeckKey;
@@ -210,6 +219,7 @@ export function Room({
         <div className="room-main-column">
           <StoryArea
             snapshot={snapshot}
+            theme={effectiveTheme}
             t={t}
             onSnapshot={(next) => { snapshotRef.current = next; setSnapshot(next); }}
             onError={handleError}
@@ -219,7 +229,7 @@ export function Room({
         </div>
         <aside className="room-side-column">
           {!snapshot.story && <Participants snapshot={snapshot} reactions={reactions} onReact={sendReaction} t={t} />}
-          <History items={snapshot.history} roomTheme={snapshot.room.theme} t={t} locale={locale} />
+          <History items={snapshot.history} roomTheme={effectiveTheme} t={t} locale={locale} />
           {!snapshot.story && <button className="archive-button" type="button" onClick={async () => {
             if (!window.confirm(t('archiveConfirm'))) return;
             try { await api.archiveRoom(slug); navigate('/'); } catch (reason) { setError(messageFor(reason)); }
@@ -262,8 +272,9 @@ function JoinRoom({ snapshot, profile, t, onEditProfile, onJoin, error, navigate
   );
 }
 
-function StoryArea({ snapshot, t, onSnapshot, onError, reactions, onReact }: {
+function StoryArea({ snapshot, theme, t, onSnapshot, onError, reactions, onReact }: {
   snapshot: RoomSnapshot;
+  theme: RoomTheme;
   t: TFunction;
   onSnapshot: (snapshot: RoomSnapshot) => void;
   onError: (reason: unknown) => void;
@@ -279,12 +290,12 @@ function StoryArea({ snapshot, t, onSnapshot, onError, reactions, onReact }: {
         <div className="story-ticket-label"><span>{t('currentStory')}</span><b>{deckLabel(story.deckKey, t)}</b></div>
         {link ? <a className="story-reference" href={link.href} target="_blank" rel="noreferrer" title={story.title}><span className="story-domain">{link.hostname}</span><strong>{story.title}</strong><em>{t('openStory')} ↗</em></a>
           : <div className="story-reference"><span className="story-domain">{t('currentStory')}</span><strong>{story.title}</strong></div>}
-        {story.timer && <Timer slug={snapshot.room.slug} timer={story.timer} soundEnabled={snapshot.room.soundEnabled} theme={snapshot.room.theme} t={t} onError={onError} />}
+        {story.timer && <Timer slug={snapshot.room.slug} timer={story.timer} soundEnabled={snapshot.room.soundEnabled} theme={theme} t={t} onError={onError} />}
       </article>
       {story.status === 'voting' ? (
-        <VotingStage snapshot={snapshot} story={story} reactions={reactions} onReact={onReact} t={t} onError={onError} />
+        <VotingStage snapshot={snapshot} story={story} theme={theme} reactions={reactions} onReact={onReact} t={t} onError={onError} />
       ) : (
-        <ResultsStage snapshot={snapshot} story={story} reactions={reactions} onReact={onReact} t={t} onError={onError} />
+        <ResultsStage snapshot={snapshot} story={story} theme={theme} reactions={reactions} onReact={onReact} t={t} onError={onError} />
       )}
     </>
   );
@@ -322,7 +333,7 @@ function DeckOptions({ t }: { t: TFunction }) {
   return <><option value="scrum">Scrum</option><option value="fibonacci">Fibonacci</option><option value="powers">1 · 2 · 4 · 8</option><option value="tshirt">T-shirt</option><option value="approval">{t('approvalDeck')}</option></>;
 }
 
-function VotingStage({ snapshot, story, reactions, onReact, t, onError }: { snapshot: RoomSnapshot; story: StoryView; reactions: ReactionView[]; onReact: (targetParticipantId: string, emoji: ReactionEmoji) => void; t: TFunction; onError: (reason: unknown) => void }) {
+function VotingStage({ snapshot, story, theme, reactions, onReact, t, onError }: { snapshot: RoomSnapshot; story: StoryView; theme: RoomTheme; reactions: ReactionView[]; onReact: (targetParticipantId: string, emoji: ReactionEmoji) => void; t: TFunction; onError: (reason: unknown) => void }) {
   const canVote = snapshot.me?.role === 'voter';
   const anyVote = snapshot.participants.some((participant) => participant.hasVoted);
   const onlineVoters = snapshot.participants.filter((participant) => participant.role === 'voter' && participant.online);
@@ -352,18 +363,18 @@ function VotingStage({ snapshot, story, reactions, onReact, t, onError }: { snap
     <section className="voting-stage stage-card">
       <div className="voting-heading"><div><h2>{t('participantsTitle')}</h2><p>{t('chooseCardCopy')}</p></div><span className="privacy-badge">● {snapshot.participants.filter((participant) => participant.hasVoted).length}/{snapshot.participants.filter((participant) => participant.role === 'voter').length}</span></div>
       {autoRevealCountdown !== null && <div className="auto-reveal-countdown" role="status"><span>{t('autoRevealCountdown')}</span><strong>{autoRevealCountdown}</strong><i /></div>}
-      <PokerTable snapshot={snapshot} story={story} revealed={false} reactions={reactions} onReact={onReact} t={t} />
+      <PokerTable snapshot={snapshot} story={story} theme={theme} revealed={false} reactions={reactions} onReact={onReact} t={t} />
       <div className="estimate-dock">
         <div className="estimate-dock-heading"><h3>{canVote ? t('chooseCard') : t('observerBadge')}</h3>{canVote && snapshot.ownVote && <p className="vote-confirmation">✓ {t('waitingReveal')}</p>}</div>
         {canVote ? <div className="estimate-deck" role="radiogroup" aria-label={t('ariaDeck')}>
           {[...story.deckValues, ABSTAIN_VALUE].map((value, index) => {
             const selected = snapshot.ownVote === value;
-            const label = value === ABSTAIN_VALUE ? abstainLabel(snapshot.room.theme, t) : voteValueLabel(value, t);
+            const label = value === ABSTAIN_VALUE ? abstainLabel(theme, t) : voteValueLabel(value, t);
             const approvalVote = story.deckKey === 'approval' && value !== ABSTAIN_VALUE;
             return <button key={value} data-estimate-value={value} className={`estimate-card ${selected ? 'selected' : ''} ${value === ABSTAIN_VALUE ? 'abstain-card' : ''} ${approvalVote ? 'approval-card' : ''}`} style={{ '--card-index': index } as React.CSSProperties} role="radio" aria-checked={selected} type="button" onClick={async () => {
               try {
                 await api.vote(snapshot.room.slug, value);
-                if (snapshot.room.soundEnabled) playRoomSound('vote', snapshot.room.theme);
+                if (snapshot.room.soundEnabled) playRoomSound('vote', theme);
               } catch (reason) { onError(reason); }
             }}>{approvalVote && <span className="approval-symbol approval-symbol-top" aria-hidden="true">{value === 'yes' ? '👍' : '👎'}</span>}<strong>{label}</strong>{approvalVote && <span className="approval-symbol approval-symbol-bottom" aria-hidden="true">{value === 'yes' ? '👍' : '👎'}</span>}{selected && <small>✓</small>}</button>;
           })}
@@ -374,7 +385,7 @@ function VotingStage({ snapshot, story, reactions, onReact, t, onError }: { snap
   );
 }
 
-function PokerTable({ snapshot, story, revealed, reactions, onReact, t }: { snapshot: RoomSnapshot; story: StoryView; revealed: boolean; reactions: ReactionView[]; onReact: (targetParticipantId: string, emoji: ReactionEmoji) => void; t: TFunction }) {
+function PokerTable({ snapshot, story, theme, revealed, reactions, onReact, t }: { snapshot: RoomSnapshot; story: StoryView; theme: RoomTheme; revealed: boolean; reactions: ReactionView[]; onReact: (targetParticipantId: string, emoji: ReactionEmoji) => void; t: TFunction }) {
   const votes = new Map((story.revealedVotes ?? []).map((vote) => [vote.participantId, vote]));
   const voters = snapshot.participants.filter((participant) => participant.role === 'voter').length;
   const played = snapshot.participants.filter((participant) => participant.hasVoted).length;
@@ -396,9 +407,9 @@ function PokerTable({ snapshot, story, revealed, reactions, onReact, t }: { snap
         const cardFrontValue = participant.role === 'observer'
           ? t('observerCard')
           : vote
-            ? vote.isAbstention ? abstainLabel(snapshot.room.theme, t) : approvalVote ? approvalResultIcon(approvalVote) : voteValueLabel(vote.value, t)
+            ? vote.isAbstention ? abstainLabel(theme, t) : approvalVote ? approvalResultIcon(approvalVote) : voteValueLabel(vote.value, t)
             : '—';
-        const status = participant.role === 'observer' ? t('observerBadge') : vote ? (vote.isAbstention ? abstainLabel(snapshot.room.theme, t) : voteValueLabel(vote.value, t)) : participant.hasVoted ? t('voted') : t('thinking');
+        const status = participant.role === 'observer' ? t('observerBadge') : vote ? (vote.isAbstention ? abstainLabel(theme, t) : voteValueLabel(vote.value, t)) : participant.hasVoted ? t('voted') : t('thinking');
         const style = {
           '--seat-x': `${50 + Math.cos(angle) * 40}%`,
           '--seat-y': `${50 + Math.sin(angle) * 28}%`,
@@ -417,12 +428,12 @@ function PokerTable({ snapshot, story, revealed, reactions, onReact, t }: { snap
   );
 }
 
-function ResultsStage({ snapshot, story, reactions, onReact, t, onError }: { snapshot: RoomSnapshot; story: StoryView; reactions: ReactionView[]; onReact: (targetParticipantId: string, emoji: ReactionEmoji) => void; t: TFunction; onError: (reason: unknown) => void }) {
+function ResultsStage({ snapshot, story, theme, reactions, onReact, t, onError }: { snapshot: RoomSnapshot; story: StoryView; theme: RoomTheme; reactions: ReactionView[]; onReact: (targetParticipantId: string, emoji: ReactionEmoji) => void; t: TFunction; onError: (reason: unknown) => void }) {
   const [finalValue, setFinalValue] = useState(story.suggestedValue ? voteValueLabel(story.suggestedValue, t) : '');
   return (
     <section className={`results-stage stage-card ${story.unanimous ? 'unanimous' : ''}`}>
       <div className="results-heading"><div><p className="eyebrow">{t('resultTitle')}</p><h2>{story.unanimous ? t('unanimousTitle') : t('resultTitle')}</h2>{story.unanimous && <p>{t('unanimousCopy')}</p>}</div></div>
-      <PokerTable snapshot={snapshot} story={story} revealed reactions={reactions} onReact={onReact} t={t} />
+      <PokerTable snapshot={snapshot} story={story} theme={theme} revealed reactions={reactions} onReact={onReact} t={t} />
       <form className="finalize-form" onSubmit={async (event) => { event.preventDefault(); try { await api.finalize(snapshot.room.slug, finalValue); } catch (reason) { onError(reason); } }}>
         <label>{t('finalValue')}<input value={finalValue} onChange={(event) => setFinalValue(event.target.value)} placeholder={t('finalValuePlaceholder')} maxLength={32} required /></label>
         <button className="button button-primary button-large" type="submit">{t('validate')} →</button>
@@ -457,7 +468,7 @@ function ReactionTarget({ participant, meId, reactions, onReact, size = 'medium'
       {canReact ? <button className="reaction-avatar-button" type="button" aria-label={t('reactTo', { name: participant.displayName })} aria-expanded={open} onClick={() => setOpen((value) => !value)}><Avatar avatar={participant.avatar} avatarImage={participant.avatarImage} size={size} /></button>
         : <Avatar avatar={participant.avatar} avatarImage={participant.avatarImage} size={size} />}
       {open && <span className="reaction-picker" role="menu" aria-label={t('chooseReaction')}>
-        {REACTION_EMOJIS.map((emoji) => <button key={emoji} type="button" role="menuitem" aria-label={t('sendReaction', { emoji, name: participant.displayName })} onClick={() => { onReact(participant.id, emoji); setOpen(false); }}>{emoji}</button>)}
+        {REACTION_EMOJIS.map((emoji) => <button key={emoji} type="button" role="menuitem" aria-label={t('sendReaction', { emoji, name: participant.displayName })} onClick={() => onReact(participant.id, emoji)}>{emoji}</button>)}
       </span>}
       <span className="reaction-burst" aria-hidden="true">{visibleReactions.map((reaction, index) => <i key={reaction.id} style={{ '--reaction-start-x': `${42 + (index % 3) * 13}px`, '--reaction-start-y': `${-76 - (index % 2) * 18}px` } as React.CSSProperties}>{reaction.emoji}</i>)}</span>
     </span>
@@ -526,6 +537,33 @@ function approvalReactionAsset(value: string): string {
 
 function membershipStorageKey(slug: string): string {
   return `poker-express-membership:${slug}`;
+}
+
+const ROOM_THEMES = new Set<RoomTheme>(['classic', 'train', 'station', 'turbo']);
+
+function themeStorageKey(slug: string): string {
+  return `poker-express-theme:${slug}`;
+}
+
+function readLocalTheme(slug: string): RoomTheme | null {
+  try {
+    const key = themeStorageKey(slug);
+    const value = window.localStorage.getItem(key);
+    if (value === null) return null;
+    if (ROOM_THEMES.has(value as RoomTheme)) return value as RoomTheme;
+    window.localStorage.removeItem(key);
+  } catch {
+    // A local theme is optional; keep using the server theme when storage is unavailable.
+  }
+  return null;
+}
+
+function storeLocalTheme(slug: string, theme: RoomTheme): void {
+  try {
+    window.localStorage.setItem(themeStorageKey(slug), theme);
+  } catch {
+    // The in-memory theme still applies when persistence is unavailable.
+  }
 }
 
 function abstainLabel(theme: RoomTheme, t: TFunction): string {
